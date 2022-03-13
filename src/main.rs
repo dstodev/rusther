@@ -11,12 +11,12 @@ mod rusther;
 mod commands;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), String> {
     let token = get_token().unwrap();
 
     let mut arbiter = Arbiter::new();
 
-    arbiter.register_text_command("ping", Box::new(commands::Ping {}));
+    arbiter.register_text_command("ping", Box::new(commands::Ping::new()))?;
 
     let mut client = Client::builder(token)
         .event_handler(arbiter)
@@ -26,6 +26,8 @@ async fn main() {
     if let Err(reason) = client.start().await {
         println!("Client failed with: {:?}", reason);
     }
+
+    Ok(())
 }
 
 fn get_token() -> Result<String, &'static str> {
