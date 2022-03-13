@@ -151,7 +151,7 @@ mod tests {
         let mut arbiter = Arbiter::new();
         let recipient = Box::new(UnitRecipient);
 
-        arbiter.register_text_command("test", recipient);
+        let _ = arbiter.register_text_command("test", recipient);
 
         let input = format!("{}", arbiter.command_prefix);
         let actual = arbiter.get_command_recipient_for(&input);
@@ -163,7 +163,7 @@ mod tests {
         let mut arbiter = Arbiter::new();
         let recipient = Box::new(UnitRecipient);
 
-        arbiter.register_text_command("test", recipient);
+        let _ = arbiter.register_text_command("test", recipient);
 
         let input = format!("{}test", arbiter.command_prefix);
         let actual = arbiter.get_command_recipient_for(&input);
