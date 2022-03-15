@@ -16,7 +16,8 @@ async fn main() -> Result<(), String> {
 
     let mut arbiter = Arbiter::new();
 
-    arbiter.register_text_command("ping", Box::new(commands::Ping::new()))?;
+    arbiter.register_event_handler("ping", Box::new(commands::Ping::new()))?;
+    arbiter.register_event_handler("announce", Box::new(commands::Announce))?;
 
     let mut client = Client::builder(token)
         .event_handler(arbiter)
@@ -26,7 +27,6 @@ async fn main() -> Result<(), String> {
     if let Err(reason) = client.start().await {
         println!("Client failed with: {:?}", reason);
     }
-
     Ok(())
 }
 

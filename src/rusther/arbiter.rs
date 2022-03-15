@@ -11,54 +11,43 @@ use serenity::{
 };
 use tokio::sync::Mutex;
 
-#[async_trait]
-pub trait MessageRecipient: Sync + Send {
-    async fn receive(&mut self, ctx: &Context, msg: &Message);
-}
+use crate::rusther::EventSubHandler;
 
-type CommandName = &'static str;
-
-type TextCommandInput = Box<dyn MessageRecipient>;
-type TextCommandHandler = Arc<Mutex<TextCommandInput>>;
+type CommandHandler = Box<dyn EventSubHandler>;
+type SafeCommandHandler = Arc<Mutex<CommandHandler>>;
 
 
 // Real recipient
 pub struct Arbiter {
     command_prefix: char,
-    text_commands: HashMap<CommandName, TextCommandHandler>,
+    commands: HashMap<&'static str, SafeCommandHandler>,
 }
 
 impl Arbiter {
     pub fn new() -> Self {
         Self {
             command_prefix: '!',
-            text_commands: HashMap::new(),
+            commands: HashMap::new(),
         }
     }
-    pub fn register_text_command(&mut self, name: CommandName, handler: TextCommandInput) -> Result<(), String> {
+    pub fn register_event_handler(&mut self, name: &'static str, handler: CommandHandler) -> Result<(), String> {
         let element = Arc::new(Mutex::new(handler));
 
-        if self.text_commands.insert(name, element).is_some() {
-            return Err(format!("A text command named '{}' already exists!", name));
+        if self.commands.insert(name, element).is_some() {
+            return Err(format!("A command named '{}' already exists!", name));
         }
         Ok(())
     }
-    fn get_command_recipient_for(&self, msg: &str) -> Option<TextCommandHandler> {
-        if msg.starts_with(self.command_prefix) {
-            let command_name = self.get_command_name_from(msg);
-            let command = self.text_commands.get(command_name.as_str())?;
-
-            return Some(command.clone());
-        }
-        None
+    fn get_command_handler_for(&self, name: &'static str) -> Option<&SafeCommandHandler> {
+        self.commands.get(name)
     }
-    fn get_command_name_from(&self, msg: &str) -> String {
+    fn get_command_name_from(prefix: char, msg: &str) -> String {
         let mut result = String::new();
 
         if let Some(first_word) = msg.split(' ').next() {
             let mut s = first_word.to_string();
 
-            if s.starts_with(self.command_prefix) {
+            if s.starts_with(prefix) {
                 s.remove(0);
             }
             result = s;
@@ -70,14 +59,16 @@ impl Arbiter {
 #[async_trait]
 impl EventHandler for Arbiter {
     async fn message(&self, ctx: Context, msg: Message) {
-        if let Some(c) = self.get_command_recipient_for(&msg.content) {
-            let mut handler = c.lock().await;
-            handler.receive(&ctx, &msg).await;
+        for (_k, v) in self.commands.iter() {
+            let mut handler = v.lock().await;
+            handler.message(&ctx, &msg).await;
         }
     }
-
-    async fn ready(&self, _ctx: Context, ready: Ready) {
-        println!("{} is now online!", ready.user.name);
+    async fn ready(&self, ctx: Context, ready: Ready) {
+        for (_k, v) in self.commands.iter() {
+            let mut handler = v.lock().await;
+            handler.ready(&ctx, &ready).await;
+        }
     }
 }
 
@@ -88,8 +79,8 @@ mod tests {
     struct UnitRecipient;
 
     #[async_trait]
-    impl MessageRecipient for UnitRecipient {
-        async fn receive(&mut self, _ctx: &Context, _msg: &Message) {}
+    impl EventSubHandler for UnitRecipient {
+        async fn message(&mut self, _ctx: &Context, _msg: &Message) {}
     }
 
     #[test]
@@ -97,9 +88,9 @@ mod tests {
         let mut arbiter = Arbiter::new();
         let recipient = Box::new(UnitRecipient);
 
-        let result = arbiter.register_text_command("test", recipient);
+        let result = arbiter.register_event_handler("test", recipient);
         assert!(result.is_ok());
-        assert_eq!(1, arbiter.text_commands.len());
+        assert_eq!(1, arbiter.commands.len());
     }
 
     #[test]
@@ -107,66 +98,59 @@ mod tests {
         let mut arbiter = Arbiter::new();
 
         let recipient = Box::new(UnitRecipient);
-        let result = arbiter.register_text_command("test", recipient);
+        let result = arbiter.register_event_handler("test", recipient);
         assert!(result.is_ok());
-        assert_eq!(1, arbiter.text_commands.len());
+        assert_eq!(1, arbiter.commands.len());
 
         let recipient = Box::new(UnitRecipient);
-        let result = arbiter.register_text_command("test", recipient);
+        let result = arbiter.register_event_handler("test", recipient);
         assert!(result.is_err());
-        assert_eq!(1, arbiter.text_commands.len());
+        assert_eq!(1, arbiter.commands.len());
     }
 
     #[test]
-    fn get_command_name_empty() {
-        let arbiter = Arbiter::new();
-        let actual = arbiter.get_command_name_from("");
+    fn get_command_name_from_empty() {
+        let actual = Arbiter::get_command_name_from('!', "");
         assert_eq!("".to_string(), actual);
     }
 
     #[test]
-    fn get_command_name_one_word() {
-        let arbiter = Arbiter::new();
-        let actual = arbiter.get_command_name_from("Hello");
+    fn get_command_name_from_one_word() {
+        let actual = Arbiter::get_command_name_from('!', "Hello");
         assert_eq!("Hello".to_string(), actual);
     }
 
     #[test]
-    fn get_command_name_two_words() {
-        let arbiter = Arbiter::new();
-        let actual = arbiter.get_command_name_from("Hello there!");
+    fn get_command_name_from_two_words() {
+        let actual = Arbiter::get_command_name_from('!', "Hello there!");
         assert_eq!("Hello".to_string(), actual);
     }
 
     #[test]
-    fn get_command_name_strips_prefix() {
+    fn get_command_name_from_strips_prefix() {
         let arbiter = Arbiter::new();
         let input = format!("{}Hello there!", arbiter.command_prefix);
-        let actual = arbiter.get_command_name_from(&input);
+        let actual = Arbiter::get_command_name_from('!', &input);
         assert_eq!("Hello".to_string(), actual);
     }
 
     #[test]
-    fn get_command_recipient_for_returns_none() {
+    fn get_command_handler_for_returns_none() {
         let mut arbiter = Arbiter::new();
         let recipient = Box::new(UnitRecipient);
 
-        let _ = arbiter.register_text_command("test", recipient);
-
-        let input = format!("{}", arbiter.command_prefix);
-        let actual = arbiter.get_command_recipient_for(&input);
+        let _ = arbiter.register_event_handler("test", recipient);
+        let actual = arbiter.get_command_handler_for("");
         assert!(actual.is_none());
     }
 
     #[test]
-    fn get_command_recipient_for_returns_some() {
+    fn get_command_handler_for_returns_some() {
         let mut arbiter = Arbiter::new();
         let recipient = Box::new(UnitRecipient);
 
-        let _ = arbiter.register_text_command("test", recipient);
-
-        let input = format!("{}test", arbiter.command_prefix);
-        let actual = arbiter.get_command_recipient_for(&input);
+        let _ = arbiter.register_event_handler("test", recipient);
+        let actual = arbiter.get_command_handler_for("test");
         assert!(actual.is_some());
     }
 }

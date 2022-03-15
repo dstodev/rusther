@@ -1,10 +1,10 @@
-use serenity::async_trait;
-use serenity::client::Context;
-use serenity::model::channel::Message;
+use serenity::{
+    async_trait,
+    model::channel::Message,
+    prelude::*,
+};
 
-use rusther::MessageRecipient;
-
-use crate::rusther;
+use crate::rusther::EventSubHandler;
 
 pub struct Ping {
     value: i32,
@@ -19,8 +19,8 @@ impl Ping {
 }
 
 #[async_trait]
-impl MessageRecipient for Ping {
-    async fn receive(&mut self, ctx: &Context, msg: &Message) {
+impl EventSubHandler for Ping {
+    async fn message(&mut self, ctx: &Context, msg: &Message) {
         if msg.content == "!ping" {
             self.value += 1;
             let message = format!("Welcome #{}!", self.value);

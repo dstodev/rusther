@@ -1,4 +1,5 @@
 pub use arbiter::Arbiter;
-pub use arbiter::MessageRecipient;
+pub use event_sub_handler::EventSubHandler;
 
 mod arbiter;
+mod event_sub_handler;
