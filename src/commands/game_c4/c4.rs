@@ -1,29 +1,24 @@
-use serenity::{
-	async_trait,
-	model::{
-		channel::Message,
-		event::MessageUpdateEvent,
-		id::MessageId,
-	},
-	prelude::*,
+use serenity::model::id::MessageId;
+
+use crate::commands::game_c4::{
+	get_neighbor::get_neighbor,
+	index_from_rc::index_from_rc,
 };
 
-use crate::rusther::EventSubHandler;
-
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum GameState {
-	Closed,
-	Playing,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum Player {
+pub enum Player {
 	Red,
 	Blue,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum Direction {
+pub enum GameState {
+	Closed,
+	Playing,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Direction {
 	North,
 	NorthEast,
 	East,
@@ -62,27 +57,19 @@ impl ConnectFour {
 			message_id: MessageId::default(),
 		}
 	}
-	fn set_player_at_rc(&mut self, row: usize, column: usize, player: Player) {
-		let index = row * self.board_width + column;
-		self.board[index] = Some(player);
-	}
-	fn get_player_at_rc(&mut self, row: usize, column: usize) -> Option<Player> {
-		let index = row * self.board_width + column;
-		self.board[index]
-	}
-	fn dispatch(&mut self, message: &str) {
+	pub fn dispatch(&mut self, message: &str) {
 		match message {
 			"c4 start" | "c4 restart" => self.restart(),
 			_ => {}
 		};
 	}
-	fn restart(&mut self) {
+	pub fn restart(&mut self) {
 		self.state = GameState::Playing;
 		self.turn = Player::Red;
 		self.board = vec![None; self.board_width * self.board_height];
 		self.message_id = MessageId::default();
 	}
-	fn emplace(&mut self, column: usize) -> bool {
+	pub fn emplace(&mut self, column: usize) -> bool {
 		if column >= self.board_width {
 			return false;
 		}
@@ -100,19 +87,20 @@ impl ConnectFour {
 		}
 		false
 	}
-
-	fn get_winner(&self) -> Option<Player> {
+	pub fn get_winner(&self) -> Option<Player> {
+		// @formatter:off
 		let up_down = self.get_count_in_direction(self.current_index, Direction::North)
-			+ self.get_count_in_direction(self.current_index, Direction::South);
+		            + self.get_count_in_direction(self.current_index, Direction::South);
 
 		let left_right = self.get_count_in_direction(self.current_index, Direction::East)
-			+ self.get_count_in_direction(self.current_index, Direction::West);
+		               + self.get_count_in_direction(self.current_index, Direction::West);
 
 		let tl_br = self.get_count_in_direction(self.current_index, Direction::NorthWest)
-			+ self.get_count_in_direction(self.current_index, Direction::SouthEast);
+		          + self.get_count_in_direction(self.current_index, Direction::SouthEast);
 
 		let bl_tr = self.get_count_in_direction(self.current_index, Direction::SouthWest)
-			+ self.get_count_in_direction(self.current_index, Direction::NorthEast);
+		          + self.get_count_in_direction(self.current_index, Direction::NorthEast);
+		// @formatter:on
 
 		println!("{}\n{}\n{}\n{}", up_down, left_right, tl_br, bl_tr);
 
@@ -124,11 +112,17 @@ impl ConnectFour {
 			None
 		}
 	}
+	fn set_player_at_rc(&mut self, row: usize, column: usize, player: Player) {
+		let index = index_from_rc(row, column, self.board_width);
+		self.board[index] = Some(player);
+	}
+	fn get_player_at_rc(&mut self, row: usize, column: usize) -> Option<Player> {
+		let index = index_from_rc(row, column, self.board_width);
+		self.board[index]
+	}
 	fn get_count_in_direction(&self, index: usize, direction: Direction) -> usize {
-		let stride = self.board_width;
-
 		if let Some(player) = self.board[index] {
-			if let Some(neighbor) = self.get_neighbor(index, direction) {
+			if let Some(neighbor) = get_neighbor(index, direction, self.board_width, self.board_height) {
 				if let Some(other_piece) = self.board[neighbor] {
 					if player == other_piece {
 						return 1 + self.get_count_in_direction(neighbor, direction);
@@ -140,46 +134,10 @@ impl ConnectFour {
 			0
 		}
 	}
-	fn get_neighbor(&self, index: usize, direction: Direction) -> Option<usize> {
-		let stride = self.board_width;
-
-		match direction {
-			Direction::North => if index >= stride { Some(index - stride) } else { None },
-			Direction::NorthEast => if index > stride { Some(index - stride + 1) } else { None },
-			// Direction::East => index + 1,
-			// Direction::SouthEast => index + stride + 1,
-			// Direction::South => index + stride,
-			// Direction::SouthWest => index + stride - 1,
-			// Direction::West => index - 1,
-			// Direction::NorthWest => index - stride - 1,
-			_ => Some(0),
-		}
-	}
-}
-
-#[async_trait]
-impl EventSubHandler for ConnectFour {
-	async fn message(&mut self, ctx: &Context, new_message: &Message) {
-		self.dispatch(&new_message.content);
-
-		let say = match new_message.content.as_str() {
-			"c4 state" => format!("{:?}", self.state),
-			"c4 board" => format!("{:?}", self.board),
-			"c4 turn" => format!("{:?}", self.turn),
-			_ => String::new()
-		};
-		let _ = new_message.channel_id.say(&ctx.http, say).await;
-	}
-
-	async fn message_update(&mut self, _ctx: &Context, _new_data: &MessageUpdateEvent) {
-		todo!()
-	}
 }
 
 #[cfg(test)]
 mod tests {
-	use std::ops::Deref;
-
 	use super::*;
 
 	#[test]
@@ -451,6 +409,8 @@ mod tests {
 		assert_eq!(Some(Player::Red), cf.get_winner());
 	}
 
+	// TODO: Test for greater-than-four connection
+
 	#[test]
 	fn test_get_count_in_direction() {
 		let stride = 5;
@@ -478,7 +438,7 @@ mod tests {
 			3  - R R B -  <-- and here at (3,3)
 			4  - - - - -
 		*/
-		let index_middle = /* row */ 2 * stride + /* col */ 2;
+		let index_middle = index_from_rc(2, 2, stride);
 		assert_eq!(3, cf.get_count_in_direction(index_middle, Direction::North));
 		assert_eq!(3, cf.get_count_in_direction(index_middle, Direction::NorthEast));
 		assert_eq!(1, cf.get_count_in_direction(index_middle, Direction::East));
@@ -487,34 +447,5 @@ mod tests {
 		assert_eq!(2, cf.get_count_in_direction(index_middle, Direction::SouthWest));
 		assert_eq!(2, cf.get_count_in_direction(index_middle, Direction::West));
 		assert_eq!(1, cf.get_count_in_direction(index_middle, Direction::NorthWest));
-	}
-
-	#[test]
-	fn test_get_neighbor() {
-		let stride = 3;
-		let mut cf = ConnectFour::new(Some(stride), Some(stride));
-		cf.restart();
-
-		cf.board = vec![Some(Player::Red); stride * stride];
-		cf.set_player_at_rc(0, 0, Player::Blue);
-		cf.set_player_at_rc(0, 1, Player::Blue);
-		cf.set_player_at_rc(0, 2, Player::Blue);
-		cf.set_player_at_rc(1, 2, Player::Blue);
-
-		/*
-			   0 1 2
-			0  B B B
-			1  R R B
-			2  R R R
-		*/
-		let index_middle = /* row */ 1 * stride + /* col */ 1;
-		assert_eq!(Some(/* row */ 0 * stride + /* col */ 0), cf.get_neighbor(index_middle, Direction::North));
-		assert_eq!(Some(/* row */ 0 * stride + /* col */ 1), cf.get_neighbor(index_middle, Direction::NorthEast));
-		assert_eq!(Some(/* row */ 0 * stride + /* col */ 2), cf.get_neighbor(index_middle, Direction::East));
-		assert_eq!(Some(/* row */ 1 * stride + /* col */ 0), cf.get_neighbor(index_middle, Direction::SouthEast));
-		assert_eq!(Some(/* row */ 1 * stride + /* col */ 2), cf.get_neighbor(index_middle, Direction::South));
-		assert_eq!(Some(/* row */ 2 * stride + /* col */ 0), cf.get_neighbor(index_middle, Direction::SouthWest));
-		assert_eq!(Some(/* row */ 2 * stride + /* col */ 1), cf.get_neighbor(index_middle, Direction::West));
-		assert_eq!(Some(/* row */ 2 * stride + /* col */ 2), cf.get_neighbor(index_middle, Direction::NorthWest));
 	}
 }
