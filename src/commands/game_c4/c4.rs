@@ -1,12 +1,35 @@
+use std::fmt::{Display, Formatter};
+use std::ops::Not;
+
 use serenity::model::id::MessageId;
 
-use super::board::{Board, Token, Direction};
+use super::board::{Board, Direction};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Player {
 	Red,
 	Blue,
 }
+impl Display for Player {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		let say = match self {
+			Self::Red => 'R',
+			Self::Blue => 'B',
+		};
+		write!(f, "{}", say)
+	}
+}
+
+impl Not for Player {
+	type Output = Player;
+	fn not(self) -> Self::Output {
+		match self {
+			Player::Red => Player::Blue,
+			Player::Blue => Player::Red,
+		}
+	}
+}
+
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum GameState {
@@ -46,15 +69,10 @@ impl ConnectFour {
 		if column >= self.board.get_width() {
 			return false;
 		}
-
 		for row in (0..self.board.get_height()).rev() {
 			if self.board.get(row, column).is_none() {
 				self.board.set(row, column, self.turn);
-
-				self.turn = match self.turn {
-					Player::Red => Player::Blue,
-					Player::Blue => Player::Red,
-				};
+				self.turn = !self.turn;
 				return true;
 			}
 		}
@@ -62,27 +80,37 @@ impl ConnectFour {
 	}
 	pub fn get_winner(&self, row: i32, column: i32) -> Option<Player> {
 		// @formatter:off
-		let up_down = self.board.get_count_in_direction(row, column, Direction::North)
-		            + self.board.get_count_in_direction(row, column, Direction::South);
+		let up_down = self.get_count_in_direction(row, column, Direction::North)
+		            + self.get_count_in_direction(row, column, Direction::South) - 1;
 
-		let left_right = self.board.get_count_in_direction(row, column, Direction::East)
-		               + self.board.get_count_in_direction(row, column, Direction::West);
+		let left_right = self.get_count_in_direction(row, column, Direction::East)
+		               + self.get_count_in_direction(row, column, Direction::West) - 1;
 
-		let tl_br = self.board.get_count_in_direction(row, column, Direction::NorthWest)
-		          + self.board.get_count_in_direction(row, column, Direction::SouthEast);
+		let tl_br = self.get_count_in_direction(row, column, Direction::NorthWest)
+		          + self.get_count_in_direction(row, column, Direction::SouthEast) - 1;
 
-		let bl_tr = self.board.get_count_in_direction(row, column, Direction::SouthWest)
-		          + self.board.get_count_in_direction(row, column, Direction::NorthEast);
+		let bl_tr = self.get_count_in_direction(row, column, Direction::SouthWest)
+		          + self.get_count_in_direction(row, column, Direction::NorthEast) - 1;
 		// @formatter:on
-
-		println!("{}\n{}\n{}\n{}", up_down, left_right, tl_br, bl_tr);
 
 		let max = up_down.max(left_right).max(tl_br).max(bl_tr);
 
-		if max == 4 {
-			Some(self.turn)
+		if max >= 4 {
+			Some(!self.turn)  // Negate because the turn is already toggled by now
 		} else {
 			None
+		}
+	}
+	pub fn get_count_in_direction(&self, row: i32, column: i32, direction: Direction) -> i32 {
+		if let Some(lhs) = self.board.get(row, column) {
+			if let Some(rhs) = self.board.get_neighbor(row, column, direction) {
+				if lhs == rhs.value {
+					return 1 + self.get_count_in_direction(rhs.row, rhs.column, direction);
+				}
+			}
+			1
+		} else {
+			0
 		}
 	}
 }
@@ -136,7 +164,7 @@ mod tests {
 			4  - - - - - - -   After placing a marker, the turn should switch to BLUE.
 			5  R - - - - - -
 		*/
-		assert_eq!(Some(&Token::new(5, 0, Player::Red)), cf.board.get(5, 0));
+		assert_eq!(Some(&Player::Red), cf.board.get(5, 0));
 		assert_eq!(Player::Blue, cf.turn);
 	}
 
@@ -155,8 +183,8 @@ mod tests {
 			4  B - - - - - -
 			5  R - - - - - -
 		*/
-		assert_eq!(Some(&Token::new(5, 0, Player::Red)), cf.board.get(5, 0));
-		assert_eq!(Some(&Token::new(4, 0, Player::Blue)), cf.board.get(4, 0));
+		assert_eq!(Some(&Player::Red), cf.board.get(5, 0));
+		assert_eq!(Some(&Player::Blue), cf.board.get(4, 0));
 		assert_eq!(Player::Red, cf.turn);
 	}
 
@@ -174,7 +202,7 @@ mod tests {
 			4  - - - - - - -
 			5  - - - - - - R
 		*/
-		assert_eq!(Some(&Token::new(5, 6, Player::Red)), cf.board.get(5, 6));
+		assert_eq!(Some(&Player::Red), cf.board.get(5, 6));
 		assert_eq!(Player::Blue, cf.turn);
 	}
 
@@ -202,12 +230,12 @@ mod tests {
 			4  B - - - - - -
 			5  R - - - - - -
 		*/
-		assert_eq!(Some(&Token::new(5, 0, Player::Red)), cf.board.get(5, 0));
-		assert_eq!(Some(&Token::new(4, 0, Player::Blue)), cf.board.get(4, 0));
-		assert_eq!(Some(&Token::new(3, 0, Player::Red)), cf.board.get(3, 0));
-		assert_eq!(Some(&Token::new(2, 0, Player::Blue)), cf.board.get(2, 0));
-		assert_eq!(Some(&Token::new(1, 0, Player::Red)), cf.board.get(1, 0));
-		assert_eq!(Some(&Token::new(0, 0, Player::Blue)), cf.board.get(0, 0));
+		assert_eq!(Some(&Player::Red), cf.board.get(5, 0));
+		assert_eq!(Some(&Player::Blue), cf.board.get(4, 0));
+		assert_eq!(Some(&Player::Red), cf.board.get(3, 0));
+		assert_eq!(Some(&Player::Blue), cf.board.get(2, 0));
+		assert_eq!(Some(&Player::Red), cf.board.get(1, 0));
+		assert_eq!(Some(&Player::Blue), cf.board.get(0, 0));
 		assert_eq!(Player::Red, cf.turn);
 	}
 
@@ -229,12 +257,12 @@ mod tests {
 			4  B - - - - - -
 			5  R - - - - - -
 		*/
-		assert_eq!(Some(&Token::new(5, 0, Player::Red)), cf.board.get(5, 0));
-		assert_eq!(Some(&Token::new(4, 0, Player::Blue)), cf.board.get(4, 0));
-		assert_eq!(Some(&Token::new(3, 0, Player::Red)), cf.board.get(3, 0));
-		assert_eq!(Some(&Token::new(2, 0, Player::Blue)), cf.board.get(2, 0));
-		assert_eq!(Some(&Token::new(1, 0, Player::Red)), cf.board.get(1, 0));
-		assert_eq!(Some(&Token::new(0, 0, Player::Blue)), cf.board.get(0, 0));
+		assert_eq!(Some(&Player::Red), cf.board.get(5, 0));
+		assert_eq!(Some(&Player::Blue), cf.board.get(4, 0));
+		assert_eq!(Some(&Player::Red), cf.board.get(3, 0));
+		assert_eq!(Some(&Player::Blue), cf.board.get(2, 0));
+		assert_eq!(Some(&Player::Red), cf.board.get(1, 0));
+		assert_eq!(Some(&Player::Blue), cf.board.get(0, 0));
 		assert_eq!(Player::Red, cf.turn);
 	}
 
@@ -275,7 +303,6 @@ mod tests {
 		assert!(cf.emplace(0));  // R (4,0)
 		assert!(cf.emplace(1));  // B (4,1)
 		assert!(cf.emplace(0));  // R (3,0)
-
 		/*
 			   0 1 2 3 4 5 6
 			0  - - - - - - -
@@ -298,9 +325,9 @@ mod tests {
 		assert!(cf.emplace(0));  // R (4,0)
 		assert!(cf.emplace(1));  // B (4,1)
 		assert!(cf.emplace(0));  // R (3,0)
-		assert!(cf.emplace(1));  // B (3,1)
-		assert!(cf.emplace(0));  // R (2,0) victory
 
+		assert!(cf.emplace(1));  // B (3,1)
+		assert_eq!(None, cf.get_winner(5, 0));
 		/*
 			   0 1 2 3 4 5 6
 			0  - - - - - - -   Red should win here.
@@ -310,31 +337,56 @@ mod tests {
 			4  R B - - - - -
 			5  R B - - - - -
 		*/
+		assert!(cf.emplace(0));  // R (2,0) victory
 		assert_eq!(Some(Player::Red), cf.get_winner(5, 0));
 	}
 
-	// TODO: Test for greater-than-four connection
-
-	#[cfg(disable)]
 	#[test]
-	fn test_get_count_in_direction() {
-		let stride = 5;
-		let mut cf = ConnectFour::new(Some(stride), Some(stride));
+	fn test_get_winner_5wide_red() {
+		let mut cf = ConnectFour::new(7, 6);
 		cf.restart();
 
-		cf.board = vec![None; stride * stride];
-		cf.set_player_at_rc(2, 1, Player::Red);
-		cf.set_player_at_rc(3, 1, Player::Red);
-		cf.set_player_at_rc(0, 2, Player::Red);
-		cf.set_player_at_rc(1, 2, Player::Red);
-		cf.set_player_at_rc(2, 2, Player::Red);
-		cf.set_player_at_rc(3, 2, Player::Red);
-		cf.set_player_at_rc(1, 3, Player::Red);
-		cf.set_player_at_rc(2, 3, Player::Blue);
-		cf.set_player_at_rc(3, 3, Player::Blue);
-		cf.set_player_at_rc(0, 4, Player::Red);
-		cf.set_player_at_rc(2, 4, Player::Red);
+		assert!(cf.emplace(0));  // R (5,0)
+		assert!(cf.emplace(0));  // B (4,0)
+		assert!(cf.emplace(1));  // R (5,1)
+		assert!(cf.emplace(1));  // B (4,1)
+		assert!(cf.emplace(2));  // R (5,2)
+		assert!(cf.emplace(2));  // B (4,2)
+		assert!(cf.emplace(4));  // R (5,4)
 
+		assert!(cf.emplace(4));  // B (4,4)
+		assert_eq!(None, cf.get_winner(5, 3));
+		/*
+			   0 1 2 3 4 5 6
+			0  - - - - - - -   Red should win here.
+			1  - - - - - - -
+			2  - - - - - - -
+			3  - - - - - - -
+			4  B B B - B - -
+			5  R R R R R - -
+			         ^
+			         |------- Placed last
+		*/
+		assert!(cf.emplace(3)); // R (5,3) victory
+		assert_eq!(Some(Player::Red), cf.get_winner(5, 3));
+	}
+
+	#[test]
+	fn test_get_count_in_direction() {
+		let mut cf = ConnectFour::new(7, 6);
+		cf.restart();
+
+		cf.board.set(2, 1, Player::Red);
+		cf.board.set(3, 1, Player::Red);
+		cf.board.set(0, 2, Player::Red);
+		cf.board.set(1, 2, Player::Red);
+		cf.board.set(2, 2, Player::Red);
+		cf.board.set(3, 2, Player::Red);
+		cf.board.set(1, 3, Player::Red);
+		cf.board.set(2, 3, Player::Blue);
+		cf.board.set(3, 3, Player::Blue);
+		cf.board.set(0, 4, Player::Red);
+		cf.board.set(2, 4, Player::Red);
 		/*
 			   0 1 2 3 4
 			0  - - R - R
@@ -343,14 +395,13 @@ mod tests {
 			3  - R R B -  <-- and here at (3,3)
 			4  - - - - -
 		*/
-		let index_middle = index_from_rc(2, 2, stride);
-		assert_eq!(3, cf.get_count_in_direction(index_middle, Direction::North));
-		assert_eq!(3, cf.get_count_in_direction(index_middle, Direction::NorthEast));
-		assert_eq!(1, cf.get_count_in_direction(index_middle, Direction::East));
-		assert_eq!(1, cf.get_count_in_direction(index_middle, Direction::SouthEast));
-		assert_eq!(2, cf.get_count_in_direction(index_middle, Direction::South));
-		assert_eq!(2, cf.get_count_in_direction(index_middle, Direction::SouthWest));
-		assert_eq!(2, cf.get_count_in_direction(index_middle, Direction::West));
-		assert_eq!(1, cf.get_count_in_direction(index_middle, Direction::NorthWest));
+		assert_eq!(3, cf.get_count_in_direction(2, 2, Direction::North));
+		assert_eq!(3, cf.get_count_in_direction(2, 2, Direction::NorthEast));
+		assert_eq!(1, cf.get_count_in_direction(2, 2, Direction::East));
+		assert_eq!(1, cf.get_count_in_direction(2, 2, Direction::SouthEast));
+		assert_eq!(2, cf.get_count_in_direction(2, 2, Direction::South));
+		assert_eq!(2, cf.get_count_in_direction(2, 2, Direction::SouthWest));
+		assert_eq!(2, cf.get_count_in_direction(2, 2, Direction::West));
+		assert_eq!(1, cf.get_count_in_direction(2, 2, Direction::NorthWest));
 	}
 }
