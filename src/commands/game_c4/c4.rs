@@ -42,6 +42,8 @@ pub struct ConnectFour {
 	turn: Player,
 	board: Board<Player>,
 	message_id: MessageId,
+	last_pos_r: i32,
+	last_pos_c: i32,
 }
 
 impl ConnectFour {
@@ -51,6 +53,8 @@ impl ConnectFour {
 			turn: Player::Red,
 			board: Board::new(width, height),
 			message_id: MessageId::default(),
+			last_pos_r: 0,
+			last_pos_c: 0,
 		}
 	}
 	pub fn dispatch(&mut self, message: &str) {
@@ -72,13 +76,18 @@ impl ConnectFour {
 		for row in (0..self.board.get_height()).rev() {
 			if self.board.get(row, column).is_none() {
 				self.board.set(row, column, self.turn);
+				self.last_pos_r = row;
+				self.last_pos_c = column;
 				self.turn = !self.turn;
 				return true;
 			}
 		}
 		false
 	}
-	pub fn get_winner(&self, row: i32, column: i32) -> Option<Player> {
+	pub fn get_winner(&self) -> Option<Player> {
+		let row = self.last_pos_r;
+		let column = self.last_pos_c;
+
 		// @formatter:off
 		let up_down = self.get_count_in_direction(row, column, Direction::North)
 		            + self.get_count_in_direction(row, column, Direction::South) - 1;
@@ -101,7 +110,7 @@ impl ConnectFour {
 			None
 		}
 	}
-	pub fn get_count_in_direction(&self, row: i32, column: i32, direction: Direction) -> i32 {
+	fn get_count_in_direction(&self, row: i32, column: i32, direction: Direction) -> i32 {
 		if let Some(lhs) = self.board.get(row, column) {
 			if let Some(rhs) = self.board.get_neighbor(row, column, direction) {
 				if lhs == rhs.value {
@@ -270,7 +279,7 @@ mod tests {
 	fn test_get_winner_none() {
 		let mut cf = ConnectFour::new(7, 6);
 		cf.restart();
-		assert_eq!(None, cf.get_winner(0, 0));
+		assert_eq!(None, cf.get_winner());
 	}
 
 	#[test]
@@ -290,7 +299,7 @@ mod tests {
 			4  B - - - - - -
 			5  R - - - - - -
 		*/
-		assert_eq!(None, cf.get_winner(5, 0));
+		assert_eq!(None, cf.get_winner());
 	}
 
 	#[test]
@@ -312,7 +321,7 @@ mod tests {
 			4  R B - - - - -
 			5  R B - - - - -
 		*/
-		assert_eq!(None, cf.get_winner(5, 0));
+		assert_eq!(None, cf.get_winner());
 	}
 
 	#[test]
@@ -327,7 +336,7 @@ mod tests {
 		assert!(cf.emplace(0));  // R (3,0)
 
 		assert!(cf.emplace(1));  // B (3,1)
-		assert_eq!(None, cf.get_winner(5, 0));
+		assert_eq!(None, cf.get_winner());
 		/*
 			   0 1 2 3 4 5 6
 			0  - - - - - - -   Red should win here.
@@ -338,7 +347,7 @@ mod tests {
 			5  R B - - - - -
 		*/
 		assert!(cf.emplace(0));  // R (2,0) victory
-		assert_eq!(Some(Player::Red), cf.get_winner(5, 0));
+		assert_eq!(Some(Player::Red), cf.get_winner());
 	}
 
 	#[test]
@@ -355,7 +364,7 @@ mod tests {
 		assert!(cf.emplace(4));  // R (5,4)
 
 		assert!(cf.emplace(4));  // B (4,4)
-		assert_eq!(None, cf.get_winner(5, 3));
+		assert_eq!(None, cf.get_winner());
 		/*
 			   0 1 2 3 4 5 6
 			0  - - - - - - -   Red should win here.
@@ -368,7 +377,7 @@ mod tests {
 			         |------- Placed last
 		*/
 		assert!(cf.emplace(3)); // R (5,3) victory
-		assert_eq!(Some(Player::Red), cf.get_winner(5, 3));
+		assert_eq!(Some(Player::Red), cf.get_winner());
 	}
 
 	#[test]

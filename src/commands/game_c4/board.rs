@@ -44,7 +44,6 @@ impl<T> Display for Board<T> where T: Display {
 		for column in 0..self.width {
 			say += &format!("{} ", column);
 		}
-
 		say += "\n";
 
 		for row in 0..self.height {
@@ -59,7 +58,6 @@ impl<T> Display for Board<T> where T: Display {
 			}
 			say += "\n";
 		}
-
 		write!(f, "{}", say)
 	}
 }
