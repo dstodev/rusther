@@ -3,8 +3,13 @@ use std::sync::Arc;
 
 use serenity::{
 	async_trait,
+	futures::future::join_all,
 	model::{
-		channel::Message,
+		channel::{
+			Message,
+			Reaction,
+		},
+		event::MessageUpdateEvent,
 		gateway::Ready,
 	},
 	prelude::*,
@@ -64,18 +69,53 @@ impl EventHandler for Arbiter {
 			let mut message = msg;
 			message.content.remove(0);
 
+			let mut futures = Vec::new();
+
 			for (_k, v) in self.commands.iter() {
-				let mut handler = v.lock().await;
-				handler.message(&ctx, &message).await;
+				futures.push(async {
+					let mut handler = v.lock().await;
+					handler.message(&ctx, &message).await;
+				})
 			}
+			join_all(futures).await;
 		}
 	}
+
+	async fn message_update(&self, ctx: Context, new_data: MessageUpdateEvent) {
+		let mut futures = Vec::new();
+
+		for (_k, v) in self.commands.iter() {
+			futures.push(async {
+				let mut handler = v.lock().await;
+				handler.message_update(&ctx, &new_data).await;
+			});
+		}
+		join_all(futures).await;
+	}
+
+	async fn reaction_add(&self, ctx: Context, add_reaction: Reaction) {
+		let mut futures = Vec::new();
+
+		for (_k, v) in self.commands.iter() {
+			futures.push(async {
+				let mut handler = v.lock().await;
+				handler.reaction_add(&ctx, &add_reaction).await;
+			});
+		}
+		join_all(futures).await;
+	}
+
 	async fn ready(&self, ctx: Context, ready: Ready) {
 		// This should remain the simplest event forwarder, as example.
+		let mut futures = Vec::new();
+
 		for (_k, v) in self.commands.iter() {
-			let mut handler = v.lock().await;
-			handler.ready(&ctx, &ready).await;
+			futures.push(async {
+				let mut handler = v.lock().await;
+				handler.ready(&ctx, &ready).await;
+			});
 		}
+		join_all(futures).await;
 	}
 }
 

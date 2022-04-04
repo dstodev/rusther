@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 use std::ops::Not;
 
-use serenity::model::id::MessageId;
+use serenity::model::id::{MessageId, UserId};
 
 use super::board::{Board, Direction};
 
@@ -10,6 +10,7 @@ pub enum Player {
 	Red,
 	Blue,
 }
+
 impl Display for Player {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		let say = match self {
@@ -38,12 +39,14 @@ pub enum GameState {
 }
 
 pub struct ConnectFour {
-	state: GameState,
-	turn: Player,
-	board: Board<Player>,
-	message_id: MessageId,
+	pub turn: Player,
+	pub state: GameState,
+	pub board: Board<Player>,
 	last_pos_r: i32,
 	last_pos_c: i32,
+
+	pub message_id: MessageId,
+	pub user_id: UserId,
 }
 
 impl ConnectFour {
@@ -53,15 +56,10 @@ impl ConnectFour {
 			turn: Player::Red,
 			board: Board::new(width, height),
 			message_id: MessageId::default(),
+			user_id: UserId::default(),
 			last_pos_r: 0,
 			last_pos_c: 0,
 		}
-	}
-	pub fn dispatch(&mut self, message: &str) {
-		match message {
-			"c4 start" | "c4 restart" => self.restart(),
-			_ => {}
-		};
 	}
 	pub fn restart(&mut self) {
 		self.state = GameState::Playing;
@@ -70,16 +68,23 @@ impl ConnectFour {
 		self.message_id = MessageId::default();
 	}
 	pub fn emplace(&mut self, column: i32) -> bool {
-		if column >= self.board.get_width() {
-			return false;
-		}
-		for row in (0..self.board.get_height()).rev() {
-			if self.board.get(row, column).is_none() {
-				self.board.set(row, column, self.turn);
-				self.last_pos_r = row;
-				self.last_pos_c = column;
-				self.turn = !self.turn;
-				return true;
+		let valid_move = self.state == GameState::Playing
+			&& column < self.board.get_width();
+
+		if valid_move {
+			for row in (0..self.board.get_height()).rev() {
+				if self.board.get(row, column).is_none() {
+					self.board.set(row, column, self.turn);
+					self.last_pos_r = row;
+					self.last_pos_c = column;
+					self.turn = !self.turn;
+
+					if let Some(_winner) = self.get_winner() {
+						//self.board.fill(winner);  // Cool effect, but obscures the winning move
+						self.state = GameState::Closed;
+					}
+					return true;
+				}
 			}
 		}
 		false
@@ -144,20 +149,6 @@ mod tests {
 	}
 
 	#[test]
-	fn test_dispatch_start() {
-		let mut cf = ConnectFour::new(7, 6);
-		cf.dispatch("c4 start");
-		assert_eq!(GameState::Playing, cf.state);
-	}
-
-	#[test]
-	fn test_dispatch_restart() {
-		let mut cf = ConnectFour::new(7, 6);
-		cf.dispatch("c4 restart");
-		assert_eq!(GameState::Playing, cf.state);
-	}
-
-	#[test]
 	fn test_emplace_col0() {
 		let mut cf = ConnectFour::new(7, 6);
 		cf.restart();
@@ -175,6 +166,25 @@ mod tests {
 		*/
 		assert_eq!(Some(&Player::Red), cf.board.get(5, 0));
 		assert_eq!(Player::Blue, cf.turn);
+	}
+
+	#[test]
+	fn test_emplace_col0_when_closed() {
+		let mut cf = ConnectFour::new(7, 6);
+		cf.restart();
+		cf.state = GameState::Closed;
+		assert!(/* returns false */ !cf.emplace(0));
+		/*
+			   0 1 2 3 4 5 6
+			0  - - - - - - -
+			1  - - - - - - -
+			2  - - - - - - -
+			3  - - - - - - -
+			4  - - - - - - -
+			5  - - - - - - -
+		*/
+		assert_eq!(None, cf.board.get(5, 0));
+		assert_eq!(Player::Red, cf.turn);
 	}
 
 	#[test]
@@ -348,6 +358,7 @@ mod tests {
 		*/
 		assert!(cf.emplace(0));  // R (2,0) victory
 		assert_eq!(Some(Player::Red), cf.get_winner());
+		assert_eq!(GameState::Closed, cf.state);
 	}
 
 	#[test]
@@ -377,6 +388,36 @@ mod tests {
 			         |------- Placed last
 		*/
 		assert!(cf.emplace(3)); // R (5,3) victory
+		assert_eq!(Some(Player::Red), cf.get_winner());
+		assert_eq!(GameState::Closed, cf.state);
+	}
+
+	#[test]
+	fn test_get_winner_after_red_won() {
+		let mut cf = ConnectFour::new(7, 6);
+		cf.restart();
+
+		assert!(cf.emplace(0));  // R (5,0)
+		assert!(cf.emplace(0));  // B (4,0)
+		assert!(cf.emplace(1));  // R (5,1)
+		assert!(cf.emplace(1));  // B (4,1)
+		assert!(cf.emplace(2));  // R (5,2)
+		assert!(cf.emplace(2));  // B (4,2)
+		assert!(cf.emplace(4));  // R (5,4)
+
+		assert!(cf.emplace(4));  // B (4,4)
+		assert_eq!(None, cf.get_winner());
+		/*
+			   0 1 2 3 4 5 6
+			0  - - - - - - -
+			1  - - - - - - -
+			2  - - - - - - -
+			3  - - - - - - -
+			4  B B B X B - -  Blue should be blocked from playing, since red won.
+			5  R R R R R - -
+		*/
+		assert!(cf.emplace(3)); // R (5,3) victory
+		assert!(!cf.emplace(3)); // B (4,3) attempt after victory
 		assert_eq!(Some(Player::Red), cf.get_winner());
 	}
 

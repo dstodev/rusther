@@ -78,6 +78,7 @@ impl<T> Board<T> where T: Clone {
 		}
 	}
 }
+
 impl<T> Board<T> {
 	pub fn get_width(&self) -> i32 {
 		self.width
