@@ -3,9 +3,9 @@ use serenity::{
 	model::{
 		channel::{
 			Message,
-			Reaction, ReactionType,
+			Reaction,
+			ReactionType,
 		},
-		gateway::Ready,
 	},
 	prelude::*,
 };
@@ -22,39 +22,32 @@ use super::c4::Player;
 
 #[async_trait]
 impl EventSubHandler for ConnectFour {
-	async fn ready(&mut self, _ctx: &Context, data_about_bot: &Ready) {
-		self.user_id = data_about_bot.user.id;
-	}
-
 	async fn message(&mut self, ctx: &Context, new_message: &Message) {
 		let message = &new_message.content;
 
-		match message.as_str() {
-			"c4 start" | "c4 restart" => {
-				self.restart();
-				let say = self.get_board_string();
+		if message.as_str() == "c4 start" {
+			self.restart();
 
-				if let Ok(m) = new_message.channel_id.say(&ctx.http, say).await {
-					self.message_id = m.id;
+			let say = self.get_render_string();
 
-					for column in 0..self.board.get_width() {
-						let reaction = Self::get_reaction_for_column(column);
+			if let Ok(m) = new_message.channel_id.say(&ctx.http, say).await {
+				self.message_id = m.id;
 
-						// Add one-at-a-time to ensure they are added in order
-						if let Err(reason) = m.react(&ctx.http, reaction).await {
-							println!("Could not react because {:?}", reason);
-						}
+				for column in 0..self.board.get_width() {
+					let reaction = Self::get_reaction_for_column(column);
+
+					// Add one-at-a-time to ensure they are added in order
+					if let Err(reason) = m.react(&ctx.http, reaction).await {
+						println!("Could not react because {:?}", reason);
 					}
 				}
 			}
-			_ => {}
 		};
 	}
 
 	async fn reaction_add(&mut self, ctx: &Context, add_reaction: &Reaction) {
 		let should_react = self.state == GameState::Playing
-			&& add_reaction.message_id == self.message_id
-			&& add_reaction.user_id.unwrap() != self.user_id;
+			&& add_reaction.message_id == self.message_id;
 
 		if should_react {
 			let reaction_unicode = &add_reaction.emoji.as_data();
@@ -66,7 +59,7 @@ impl EventSubHandler for ConnectFour {
 					let channel_id = add_reaction.channel_id;
 
 					if let Ok(mut message) = channel_id.message(&ctx.http, self.message_id).await {
-						let say = self.get_board_string();
+						let say = self.get_render_string();
 
 						if let Err(reason) = message.edit(&ctx.http, |builder| builder.content(say)).await {
 							println!("Could not edit message because {:?}", reason);
@@ -102,34 +95,52 @@ impl ConnectFour {
 		// see: https://unicode.org/emoji/charts-12.0/full-emoji-list.html#0030_fe0f_20e3
 		format!("{}\u{fe0f}\u{20e3}", column)
 	}
-	fn get_board_string(&self) -> String {
-		let mut board = String::new();
-
+	fn get_render_string(&self) -> String {
+		format!("{}{}{}",
+		        self.get_header_string(),
+		        self.get_board_string(),
+		        self.get_axis_string(),
+		)
+	}
+	fn get_header_string(&self) -> String {
 		let player_str = |p| match p {
 			Player::Red => "Red",
 			Player::Blue => "Blue",
 		};
 
-		if let Some(winner) = self.get_winner() {
-			board += &format!("{} player wins!\n", player_str(winner));
+		return if let Some(winner) = self.get_winner() {
+			format!("{} player wins!\n", player_str(winner))
 		} else {
-			board += &format!("Current turn: {}\n", player_str(self.turn));
-		}
+			format!("Current turn: {}\n", player_str(self.turn))
+		};
+	}
+	fn get_board_string(&self) -> String {
+		let mut board = String::new();
+
+		let player_str = |p| match p {
+			Some(Player::Red) => ":red_circle:",
+			Some(Player::Blue) => ":blue_circle:",
+			None => ":green_circle:",
+		};
 
 		for row in 0..self.board.get_height() {
 			for column in 0..self.board.get_width() {
 				let player = self.board.get(row, column).cloned();
-				board += Self::get_string_for(player);
+				board += player_str(player);
 			}
 			board += "\n";
 		}
 		board
 	}
-	fn get_string_for(player: Option<Player>) -> &'static str {
-		match player {
-			Some(Player::Red) => ":red_circle:",
-			Some(Player::Blue) => ":blue_circle:",
-			None => ":green_circle:",
+	fn get_axis_string(&self) -> String {
+		let mut axis = String::new();
+
+		if self.state == GameState::Playing {
+			for column in 0..self.board.get_width() {
+				axis += &Self::get_reaction_string_for_column(column);
+			}
+			axis += "\n";
 		}
+		axis
 	}
 }

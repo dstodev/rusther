@@ -11,6 +11,7 @@ use serenity::{
 		},
 		event::MessageUpdateEvent,
 		gateway::Ready,
+		id::UserId,
 	},
 	prelude::*,
 };
@@ -19,51 +20,54 @@ use tokio::sync::Mutex;
 use crate::rusther::EventSubHandler;
 
 type CommandHandler = Box<dyn EventSubHandler>;
-type SafeCommandHandler = Arc<Mutex<CommandHandler>>;
 
+struct State {
+	commands: HashMap<&'static str, CommandHandler>,
+	user_id: UserId,
+}
+
+impl State {
+	fn new() -> Self {
+		Self {
+			commands: HashMap::new(),
+			user_id: UserId::default(),
+		}
+	}
+}
 
 // Real recipient
 pub struct Arbiter {
 	command_prefix: char,
-	commands: HashMap<&'static str, SafeCommandHandler>,
+	state: Arc<Mutex<State>>,
 }
 
 impl Arbiter {
 	pub fn new() -> Self {
 		Self {
 			command_prefix: '!',
-			commands: HashMap::new(),
+			state: Arc::new(Mutex::new(State::new())),
+
 		}
 	}
 	pub fn register_event_handler(&mut self, name: &'static str, handler: CommandHandler) -> Result<(), String> {
-		let element = Arc::new(Mutex::new(handler));
+		let mut state = self.state.blocking_lock();
 
-		if self.commands.insert(name, element).is_some() {
+		if state.commands.insert(name, handler).is_some() {
 			return Err(format!("A command named '{}' already exists!", name));
 		}
 		Ok(())
-	}
-	fn get_command_handler_for(&self, name: &'static str) -> Option<&SafeCommandHandler> {
-		self.commands.get(name)
-	}
-	fn get_command_name_from(prefix: char, msg: &str) -> String {
-		let mut result = String::new();
-
-		if let Some(first_word) = msg.split(' ').next() {
-			let mut s = first_word.to_string();
-
-			if s.starts_with(prefix) {
-				s.remove(0);
-			}
-			result = s;
-		}
-		result
 	}
 }
 
 #[async_trait]
 impl EventHandler for Arbiter {
 	async fn message(&self, ctx: Context, msg: Message) {
+		let mut state = self.state.lock().await;
+
+		if msg.author.id == state.user_id {
+			println!("Skipping own message");
+			return;
+		}
 		if msg.content.starts_with(self.command_prefix) {
 			// Strip the command prefix from the message
 			let mut message = msg;
@@ -71,49 +75,57 @@ impl EventHandler for Arbiter {
 
 			let mut futures = Vec::new();
 
-			for (_k, v) in self.commands.iter() {
-				futures.push(async {
-					let mut handler = v.lock().await;
-					handler.message(&ctx, &message).await;
-				})
+			for (_name, handler) in state.commands.iter_mut() {
+				futures.push(handler.message(&ctx, &message))
 			}
 			join_all(futures).await;
 		}
 	}
 
 	async fn message_update(&self, ctx: Context, new_data: MessageUpdateEvent) {
+		let mut state = self.state.lock().await;
+
+		if let Some(user) = &new_data.author {
+			if user.id == state.user_id {
+				println!("Skipping own message_update");
+				return;
+			}
+		}
 		let mut futures = Vec::new();
 
-		for (_k, v) in self.commands.iter() {
-			futures.push(async {
-				let mut handler = v.lock().await;
-				handler.message_update(&ctx, &new_data).await;
-			});
+		for (_name, handler) in state.commands.iter_mut() {
+			futures.push(handler.message_update(&ctx, &new_data));
 		}
 		join_all(futures).await;
 	}
 
 	async fn reaction_add(&self, ctx: Context, add_reaction: Reaction) {
+		let mut state = self.state.lock().await;
+
+		if let Ok(user) = add_reaction.user(&ctx.http).await {
+			if user.id == state.user_id {
+				println!("Skipping own reaction_add");
+				return;
+			}
+		}
 		let mut futures = Vec::new();
 
-		for (_k, v) in self.commands.iter() {
-			futures.push(async {
-				let mut handler = v.lock().await;
-				handler.reaction_add(&ctx, &add_reaction).await;
-			});
+		for (_name, handler) in state.commands.iter_mut() {
+			futures.push(handler.reaction_add(&ctx, &add_reaction));
 		}
 		join_all(futures).await;
 	}
 
 	async fn ready(&self, ctx: Context, ready: Ready) {
-		// This should remain the simplest event forwarder, as example.
+		// This function should remain the simplest event forwarder, as example.
+		let mut state = self.state.lock().await;
+
+		state.user_id = ready.user.id;  // Store bot instance's id for later comparisons
+
 		let mut futures = Vec::new();
 
-		for (_k, v) in self.commands.iter() {
-			futures.push(async {
-				let mut handler = v.lock().await;
-				handler.ready(&ctx, &ready).await;
-			});
+		for (_name, handler) in state.commands.iter_mut() {
+			futures.push(handler.ready(&ctx, &ready));
 		}
 		join_all(futures).await;
 	}
@@ -137,7 +149,6 @@ mod tests {
 
 		let result = arbiter.register_event_handler("test", recipient);
 		assert!(result.is_ok());
-		assert_eq!(1, arbiter.commands.len());
 	}
 
 	#[test]
@@ -147,57 +158,9 @@ mod tests {
 		let recipient = Box::new(UnitRecipient);
 		let result = arbiter.register_event_handler("test", recipient);
 		assert!(result.is_ok());
-		assert_eq!(1, arbiter.commands.len());
 
 		let recipient = Box::new(UnitRecipient);
 		let result = arbiter.register_event_handler("test", recipient);
 		assert!(result.is_err());
-		assert_eq!(1, arbiter.commands.len());
-	}
-
-	#[test]
-	fn get_command_name_from_empty() {
-		let actual = Arbiter::get_command_name_from('!', "");
-		assert_eq!("".to_string(), actual);
-	}
-
-	#[test]
-	fn get_command_name_from_one_word() {
-		let actual = Arbiter::get_command_name_from('!', "Hello");
-		assert_eq!("Hello".to_string(), actual);
-	}
-
-	#[test]
-	fn get_command_name_from_two_words() {
-		let actual = Arbiter::get_command_name_from('!', "Hello there!");
-		assert_eq!("Hello".to_string(), actual);
-	}
-
-	#[test]
-	fn get_command_name_from_strips_prefix() {
-		let arbiter = Arbiter::new();
-		let input = format!("{}Hello there!", arbiter.command_prefix);
-		let actual = Arbiter::get_command_name_from('!', &input);
-		assert_eq!("Hello".to_string(), actual);
-	}
-
-	#[test]
-	fn get_command_handler_for_returns_none() {
-		let mut arbiter = Arbiter::new();
-		let recipient = Box::new(UnitRecipient);
-
-		let _ = arbiter.register_event_handler("test", recipient);
-		let actual = arbiter.get_command_handler_for("");
-		assert!(actual.is_none());
-	}
-
-	#[test]
-	fn get_command_handler_for_returns_some() {
-		let mut arbiter = Arbiter::new();
-		let recipient = Box::new(UnitRecipient);
-
-		let _ = arbiter.register_event_handler("test", recipient);
-		let actual = arbiter.get_command_handler_for("test");
-		assert!(actual.is_some());
 	}
 }
