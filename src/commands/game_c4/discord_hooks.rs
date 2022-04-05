@@ -33,7 +33,7 @@ impl EventSubHandler for ConnectFour {
 			if let Ok(m) = new_message.channel_id.say(&ctx.http, say).await {
 				self.message_id = m.id;
 
-				for column in 0..self.board.get_width() {
+				for column in 0..self.board.width() {
 					let reaction = Self::get_reaction_for_column(column);
 
 					// Add one-at-a-time to ensure they are added in order
@@ -64,8 +64,8 @@ impl EventSubHandler for ConnectFour {
 						if let Err(reason) = message.edit(&ctx.http, |builder| builder.content(say)).await {
 							println!("Could not edit message because {:?}", reason);
 						}
-						if self.get_winner().is_some() {
-							for column in 0..self.board.get_width() {
+						if self.state == GameState::Closed {
+							for column in 0..self.board.width() {
 								let emoji = Self::get_reaction_for_column(column);
 
 								if let Err(reason) = message.delete_reaction_emoji(&ctx.http, emoji).await {
@@ -104,15 +104,16 @@ impl ConnectFour {
 	}
 	fn get_header_string(&self) -> String {
 		let player_str = |p| match p {
-			Player::Red => "Red",
-			Player::Blue => "Blue",
+			Some(Player::Red) => "Red",
+			Some(Player::Blue) => "Blue",
+			None => "No",
 		};
 
-		return if let Some(winner) = self.get_winner() {
-			format!("{} player wins!\n", player_str(winner))
+		if self.state == GameState::Playing {
+			format!("Current turn: {}\n", player_str(Some(self.turn)))
 		} else {
-			format!("Current turn: {}\n", player_str(self.turn))
-		};
+			format!("{} player wins!\n", player_str(self.get_winner()))
+		}
 	}
 	fn get_board_string(&self) -> String {
 		let mut board = String::new();
@@ -123,8 +124,8 @@ impl ConnectFour {
 			None => ":green_circle:",
 		};
 
-		for row in 0..self.board.get_height() {
-			for column in 0..self.board.get_width() {
+		for row in 0..self.board.height() {
+			for column in 0..self.board.width() {
 				let player = self.board.get(row, column).cloned();
 				board += player_str(player);
 			}
@@ -136,7 +137,7 @@ impl ConnectFour {
 		let mut axis = String::new();
 
 		if self.state == GameState::Playing {
-			for column in 0..self.board.get_width() {
+			for column in 0..self.board.width() {
 				axis += &Self::get_reaction_string_for_column(column);
 			}
 			axis += "\n";

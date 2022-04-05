@@ -62,16 +62,16 @@ impl ConnectFour {
 	pub fn restart(&mut self) {
 		self.state = GameState::Playing;
 		self.turn = Player::Red;
-		self.board = Board::new(self.board.get_width(), self.board.get_height());
+		self.board = Board::new(self.board.width(), self.board.height());
 		self.message_id = MessageId::default();
 	}
 	pub fn emplace(&mut self, column: i32) -> bool {
 		let valid_move = self.state == GameState::Playing
 			&& 0 <= column
-			&& column < self.board.get_width();
+			&& column < self.board.width();
 
 		if valid_move {
-			for row in (0..self.board.get_height()).rev() {
+			for row in (0..self.board.height()).rev() {
 				if self.board.get(row, column).is_none() {
 					self.board.set(row, column, self.turn);
 					self.last_pos_r = row;
@@ -81,7 +81,11 @@ impl ConnectFour {
 					if let Some(_winner) = self.get_winner() {
 						//self.board.fill(winner);  // Cool effect, but obscures the winning move
 						self.state = GameState::Closed;
+					} else if self.board.data().iter().all(|e| e.is_some()) {
+						// Board is full, but there are no winners. A draw!
+						self.state = GameState::Closed;
 					}
+
 					return true;
 				}
 			}
@@ -357,7 +361,6 @@ mod tests {
 		assert!(cf.emplace(0));  // R (3,0)
 
 		assert!(cf.emplace(1));  // B (3,1)
-		assert_eq!(None, cf.get_winner());
 		/*
 			   0 1 2 3 4 5 6
 			0  - - - - - - -   Red should win here.
@@ -367,9 +370,13 @@ mod tests {
 			4  R B - - - - -
 			5  R B - - - - -
 		*/
+		assert_eq!(None, cf.get_winner());
+		assert_eq!(GameState::Playing, cf.state);
+
 		assert!(cf.emplace(0));  // R (2,0) victory
-		assert_eq!(Some(Player::Red), cf.get_winner());
+
 		assert_eq!(GameState::Closed, cf.state);
+		assert_eq!(Some(Player::Red), cf.get_winner());
 	}
 
 	#[test]
@@ -384,9 +391,7 @@ mod tests {
 		assert!(cf.emplace(2));  // R (5,2)
 		assert!(cf.emplace(2));  // B (4,2)
 		assert!(cf.emplace(4));  // R (5,4)
-
 		assert!(cf.emplace(4));  // B (4,4)
-		assert_eq!(None, cf.get_winner());
 		/*
 			   0 1 2 3 4 5 6
 			0  - - - - - - -   Red should win here.
@@ -396,11 +401,34 @@ mod tests {
 			4  B B B - B - -
 			5  R R R R R - -
 			         ^
-			         |------- Placed last
+			         |------- Place last
 		*/
+		assert_eq!(None, cf.get_winner());
+		assert_eq!(GameState::Playing, cf.state);
+
 		assert!(cf.emplace(3)); // R (5,3) victory
-		assert_eq!(Some(Player::Red), cf.get_winner());
+
 		assert_eq!(GameState::Closed, cf.state);
+		assert_eq!(Some(Player::Red), cf.get_winner());
+	}
+
+	#[test]
+	fn test_get_winner_none_tie() {
+		let mut cf = ConnectFour::new(2, 1);
+		cf.restart();
+
+		assert!(cf.emplace(0));  // R (0,0)
+		/*
+			   0 1
+			0  R B  Nobody wins here.
+		*/
+		assert_eq!(None, cf.get_winner());
+		assert_eq!(GameState::Playing, cf.state);
+
+		assert!(cf.emplace(1));  // B (0,1) draw
+
+		assert_eq!(GameState::Closed, cf.state);
+		assert_eq!(None, cf.get_winner());
 	}
 
 	#[test]
@@ -415,9 +443,7 @@ mod tests {
 		assert!(cf.emplace(2));  // R (5,2)
 		assert!(cf.emplace(2));  // B (4,2)
 		assert!(cf.emplace(4));  // R (5,4)
-
 		assert!(cf.emplace(4));  // B (4,4)
-		assert_eq!(None, cf.get_winner());
 		/*
 			   0 1 2 3 4 5 6
 			0  - - - - - - -
@@ -427,8 +453,17 @@ mod tests {
 			4  B B B X B - -  Blue should be blocked from playing, since red won.
 			5  R R R R R - -
 		*/
+		assert_eq!(None, cf.get_winner());
+		assert_eq!(GameState::Playing, cf.state);
+
 		assert!(cf.emplace(3)); // R (5,3) victory
-		assert!(!cf.emplace(3)); // B (4,3) attempt after victory
+
+		assert_eq!(GameState::Closed, cf.state);
+		assert_eq!(Some(Player::Red), cf.get_winner());
+
+		assert!(/* returns false */ !cf.emplace(3)); // B (4,3) attempt after victory
+
+		assert_eq!(GameState::Closed, cf.state);
 		assert_eq!(Some(Player::Red), cf.get_winner());
 	}
 

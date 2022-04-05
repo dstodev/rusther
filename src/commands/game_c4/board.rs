@@ -81,11 +81,14 @@ impl<T> Board<T> where T: Clone {
 }
 
 impl<T> Board<T> {
-	pub fn get_width(&self) -> i32 {
+	pub fn width(&self) -> i32 {
 		self.width
 	}
-	pub fn get_height(&self) -> i32 {
+	pub fn height(&self) -> i32 {
 		self.height
+	}
+	pub fn data(&self) -> &Vec<Option<Token<T>>> {
+		&self.data
 	}
 	pub fn get_neighbor(&self, row: i32, column: i32, direction: Direction) -> Option<Token<&T>> {
 		let (row, column) = match direction {
@@ -136,9 +139,9 @@ mod tests {
 	#[test]
 	fn new() {
 		let board = Board::<()>::new(7, 6);
-		assert_eq!(7, board.get_width());
-		assert_eq!(6, board.get_height());
-		assert_eq!(7 * 6, board.data.len());
+		assert_eq!(7, board.width());
+		assert_eq!(6, board.height());
+		assert_eq!(7 * 6, board.data().len());
 	}
 
 	#[test]
