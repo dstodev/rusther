@@ -67,6 +67,7 @@ impl ConnectFour {
 	}
 	pub fn emplace(&mut self, column: i32) -> bool {
 		let valid_move = self.state == GameState::Playing
+			&& 0 <= column
 			&& column < self.board.get_width();
 
 		if valid_move {
@@ -227,7 +228,18 @@ mod tests {
 	fn test_emplace_col7_out_of_bounds() {
 		let mut cf = ConnectFour::new(7, 6);
 		cf.restart();
+		assert_eq!(Player::Red, cf.turn);
 		assert!(/* returns false */ !cf.emplace(7));
+		assert_eq!(Player::Red, cf.turn);
+	}
+
+	#[test]
+	fn test_emplace_coln1_out_of_bounds() {
+		let mut cf = ConnectFour::new(7, 6);
+		cf.restart();
+		assert_eq!(Player::Red, cf.turn);
+		assert!(/* returns false */ !cf.emplace(-1));
+		assert_eq!(Player::Red, cf.turn);
 	}
 
 	#[test]
@@ -238,6 +250,7 @@ mod tests {
 		for _ in 0..6 {
 			assert!(cf.emplace(0));
 		}
+		assert_eq!(Player::Red, cf.turn);
 		/*
 			   0 1 2 3 4 5 6
 			0  B - - - - - -
@@ -253,7 +266,6 @@ mod tests {
 		assert_eq!(Some(&Player::Blue), cf.board.get(2, 0));
 		assert_eq!(Some(&Player::Red), cf.board.get(1, 0));
 		assert_eq!(Some(&Player::Blue), cf.board.get(0, 0));
-		assert_eq!(Player::Red, cf.turn);
 	}
 
 	#[test]
@@ -264,7 +276,9 @@ mod tests {
 		for _ in 0..6 {
 			assert!(cf.emplace(0));
 		}
-		assert!(/* returns false */ !cf.emplace(0));
+		assert_eq!(Player::Red, cf.turn);  // Is red's turn
+		assert!(/* returns false */ !cf.emplace(0));  // Red tries to place, but is invalid
+		assert_eq!(Player::Red, cf.turn); // Still red's turn
 		/*
 			   0 1 2 3 4 5 6
 			0  B - - - - - -
@@ -280,7 +294,6 @@ mod tests {
 		assert_eq!(Some(&Player::Blue), cf.board.get(2, 0));
 		assert_eq!(Some(&Player::Red), cf.board.get(1, 0));
 		assert_eq!(Some(&Player::Blue), cf.board.get(0, 0));
-		assert_eq!(Player::Red, cf.turn);
 	}
 
 	#[test]

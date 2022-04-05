@@ -184,14 +184,7 @@ mod tests {
 	#[test]
 	fn index_from_rc_out_of_bounds() {
 		let stride = 3;
-		let mut board = Board::<()>::new(stride, stride);
-		board.set(0, 0, ());
-		/*
-			   0 1 2
-			0  X - -
-			1  - - -
-			2  - - -
-		*/
+		let board = Board::<()>::new(stride, stride);
 		assert_eq!(None, board.index_from_rc(-1, 0));
 		assert_eq!(None, board.index_from_rc(0, -1));
 		assert_eq!(Some(0), board.index_from_rc(0, 0));
