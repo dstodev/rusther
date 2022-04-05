@@ -2,30 +2,38 @@ use std::env;
 use std::fs;
 
 use serenity::prelude::*;
+use tokio::runtime::Builder;
 
 use rusther::Arbiter;
 
 mod rusther;
 mod commands;
 
-#[tokio::main]
-async fn main() -> Result<(), String> {
-	let token = get_token().unwrap();
-
+fn main() -> Result<(), String> {
 	let mut arbiter = Arbiter::new();
 
 	arbiter.register_event_handler("ping", Box::new(commands::Ping::new()))?;
 	arbiter.register_event_handler("announce", Box::new(commands::Announce))?;
 	arbiter.register_event_handler("connect_four", Box::new(commands::ConnectFour::new(7, 6)))?;
 
-	let mut client = Client::builder(token)
-		.event_handler(arbiter)
-		.await
-		.expect("Could not create client!");
+	let token = get_token().unwrap();
 
-	if let Err(reason) = client.start().await {
-		println!("Client failed with: {:?}", reason);
-	}
+	let runtime = Builder::new_multi_thread()
+		.enable_all()
+		.build()
+		.unwrap();
+
+	runtime.block_on(async {
+		let mut client = Client::builder(token)
+			.event_handler(arbiter)
+			.await
+			.expect("Could not create client!");
+
+		if let Err(reason) = client.start().await {
+			println!("Client failed with: {:?}", reason);
+		}
+	});
+
 	Ok(())
 }
 

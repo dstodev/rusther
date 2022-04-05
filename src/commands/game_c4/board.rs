@@ -70,6 +70,7 @@ impl<T> Board<T> where T: Clone {
 			data: vec![None; (width * height) as usize],
 		}
 	}
+	#[allow(dead_code)]
 	pub fn fill(&mut self, value: T) {
 		for row in 0..self.height {
 			for column in 0..self.width {

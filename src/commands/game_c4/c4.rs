@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 use std::ops::Not;
 
-use serenity::model::id::{MessageId, UserId};
+use serenity::model::id::MessageId;
 
 use super::board::{Board, Direction};
 
@@ -45,8 +45,7 @@ pub struct ConnectFour {
 	last_pos_r: i32,
 	last_pos_c: i32,
 
-	pub message_id: MessageId,
-	pub user_id: UserId,
+	pub message_id: MessageId,  // TODO: Remove this field. Should not depend on serenity crate.
 }
 
 impl ConnectFour {
@@ -56,7 +55,6 @@ impl ConnectFour {
 			turn: Player::Red,
 			board: Board::new(width, height),
 			message_id: MessageId::default(),
-			user_id: UserId::default(),
 			last_pos_r: 0,
 			last_pos_c: 0,
 		}
