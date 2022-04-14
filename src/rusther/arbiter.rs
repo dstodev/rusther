@@ -82,10 +82,10 @@ impl EventHandler for Arbiter {
 		}
 	}
 
-	async fn message_update(&self, ctx: Context, new_data: MessageUpdateEvent) {
+	async fn message_update(&self, ctx: Context, _old_if_available: Option<Message>, _new: Option<Message>, event: MessageUpdateEvent) {
 		let mut state = self.state.lock().await;
 
-		if let Some(user) = &new_data.author {
+		if let Some(user) = &event.author {
 			if user.id == state.user_id {
 				println!("Skipping own message_update");
 				return;
@@ -94,7 +94,7 @@ impl EventHandler for Arbiter {
 		let mut futures = Vec::new();
 
 		for (_name, handler) in state.commands.iter_mut() {
-			futures.push(handler.message_update(&ctx, &new_data));
+			futures.push(handler.message_update(&ctx, &event));
 		}
 		join_all(futures).await;
 	}
