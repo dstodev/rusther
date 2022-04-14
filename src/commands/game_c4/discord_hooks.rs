@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serenity::{
 	async_trait,
 	model::{
@@ -21,15 +23,13 @@ use crate::{
 };
 
 pub struct ConnectFourDiscord {
-	game: ConnectFour,
-	message_id: MessageId,
+	games: HashMap<MessageId, ConnectFour>,
 }
 
 impl ConnectFourDiscord {
 	pub fn new() -> Self {
 		Self {
-			game: ConnectFour::new(7, 6),
-			message_id: MessageId::default(),
+			games: HashMap::new(),
 		}
 	}
 }
@@ -40,65 +40,82 @@ impl EventSubHandler for ConnectFourDiscord {
 		let message = &new_message.content;
 
 		if message.as_str() == "c4 start" {
-			self.game.restart();
+			let mut game = ConnectFour::new(7, 6);
 
-			let say = self.get_render_string();
+			game.restart();
 
-			if let Ok(m) = new_message.channel_id.say(&ctx.http, say).await {
-				self.message_id = m.id;
+			let say = Self::get_render_string(&game);
 
-				for column in 0..self.game.board.width() {
-					let reaction = Self::get_reaction_for_column(column);
+			if let Ok(message) = new_message.channel_id.say(&ctx.http, say).await {
+				let id = message.id;
+				let width = game.board.width();
 
-					// Add one-at-a-time to ensure they are added in order
-					if let Err(reason) = m.react(&ctx.http, reaction).await {
-						println!("Could not react because {:?}", reason);
-					}
+				if self.games.insert(id, game).is_some() {
+					panic!("C4 hashmap key collision!");
 				}
+
+				Self::add_reactions_to(&message, width, ctx).await;
 			}
 		};
 	}
-
 	async fn reaction_add(&mut self, ctx: &Context, add_reaction: &Reaction) {
-		let should_respond = self.game.state == GameState::Playing
-			&& add_reaction.message_id == self.message_id;
+		let id = add_reaction.message_id;
 
-		if should_respond {
+		if let Some(game) = self.games.get_mut(&id) {
 			let reaction_unicode = &add_reaction.emoji.as_data();
 
-			if reaction_unicode.ends_with("\u{fe0f}\u{20e3}") {
+			let should_respond = game.state == GameState::Playing
+				&& reaction_unicode.ends_with("\u{fe0f}\u{20e3}");
+
+			if should_respond {
 				let column = reaction_unicode.as_bytes()[0] - 0x30;
 
-				if self.game.emplace(column.into()) {
+				if game.emplace(column.into()) {
 					let channel_id = add_reaction.channel_id;
 
-					if let Ok(mut message) = channel_id.message(&ctx.http, self.message_id).await {
-						let say = self.get_render_string();
+					if let Ok(mut message) = channel_id.message(&ctx.http, id).await {
+						let say = Self::get_render_string(game);
 
 						if let Err(reason) = message.edit(&ctx.http, |builder| builder.content(say)).await {
 							println!("Could not edit message because {:?}", reason);
 						}
-						if self.game.state == GameState::Closed || matches!(self.game.state, GameState::Won { .. }) {
-							for column in 0..self.game.board.width() {
-								let emoji = Self::get_reaction_for_column(column);
+						if game.state == GameState::Closed || matches!(game.state, GameState::Won { .. }) {
+							let width = game.board.width();
+							Self::remove_reactions_from(&message, width, ctx).await;
 
-								if let Err(reason) = message.delete_reaction_emoji(&ctx.http, emoji).await {
-									println!("Could not remove reaction because {:?}", reason);
-								}
-							}
+							self.games.remove(&id);
 						}
 					}
-				}
 
-				if let Err(reason) = add_reaction.delete(&ctx.http).await {
-					println!("Could not remove reaction because {:?}", reason);
-				};
+					if let Err(reason) = add_reaction.delete(&ctx.http).await {
+						println!("Could not remove reaction because {:?}", reason);
+					};
+				}
 			}
 		}
 	}
 }
 
 impl ConnectFourDiscord {
+	async fn add_reactions_to(message: &Message, width: i32, ctx: &Context) {
+		for column in 0..width {
+			let reaction = Self::get_reaction_for_column(column);
+
+			// Add one-at-a-time to ensure they are added in order
+			if let Err(reason) = message.react(&ctx.http, reaction).await {
+				println!("Could not react because {:?}", reason);
+			}
+		}
+	}
+	async fn remove_reactions_from(message: &Message, width: i32, ctx: &Context) {
+		for column in 0..width {
+			let emoji = Self::get_reaction_for_column(column);
+
+			if let Err(reason) = message.delete_reaction_emoji(&ctx.http, emoji).await {
+				println!("Could not remove reaction because {:?}", reason);
+			}
+		}
+	}
 	fn get_reaction_for_column(column: i32) -> ReactionType {
 		assert!((0..10).contains(&column));
 		let triplet = Self::get_reaction_string_for_column(column);
@@ -109,27 +126,27 @@ impl ConnectFourDiscord {
 		// see: https://unicode.org/emoji/charts-12.0/full-emoji-list.html#0030_fe0f_20e3
 		format!("{}\u{fe0f}\u{20e3}", column)
 	}
-	fn get_render_string(&self) -> String {
+	fn get_render_string(game: &ConnectFour) -> String {
 		format!("{}{}{}",
-		        self.get_header_string(),
-		        self.get_board_string(),
-		        self.get_axis_string(),
+		        Self::get_header_string(game),
+		        Self::get_board_string(game),
+		        Self::get_axis_string(game),
 		)
 	}
-	fn get_header_string(&self) -> String {
+	fn get_header_string(game: &ConnectFour) -> String {
 		let player_str = |p| match p {
 			Some(Player::Red) => "Red",
 			Some(Player::Blue) => "Blue",
 			None => "No",
 		};
 
-		if self.game.state == GameState::Playing {
-			format!("Current turn: {}\n", player_str(Some(self.game.turn)))
+		if game.state == GameState::Playing {
+			format!("Current turn: {}\n", player_str(Some(game.turn)))
 		} else {
-			format!("{} player wins!\n", player_str(self.game.get_winner()))
+			format!("{} player wins!\n", player_str(game.get_winner()))
 		}
 	}
-	fn get_board_string(&self) -> String {
+	fn get_board_string(game: &ConnectFour) -> String {
 		let mut board = String::new();
 
 		let player_str = |p| match p {
@@ -138,9 +155,9 @@ impl ConnectFourDiscord {
 			None => ":green_circle:",
 		};
 
-		for row in 0..self.game.board.height() {
-			for column in 0..self.game.board.width() {
-				let player = self.game.board.get(row, column).cloned();
+		for row in 0..game.board.height() {
+			for column in 0..game.board.width() {
+				let player = game.board.get(row, column).cloned();
 				board += player_str(player);
 				board += " ";
 			}
@@ -148,11 +165,11 @@ impl ConnectFourDiscord {
 		}
 		board
 	}
-	fn get_axis_string(&self) -> String {
+	fn get_axis_string(game: &ConnectFour) -> String {
 		let mut axis = String::new();
 
-		if self.game.state == GameState::Playing {
-			for column in 0..self.game.board.width() {
+		if game.state == GameState::Playing {
+			for column in 0..game.board.width() {
 				axis += &Self::get_reaction_string_for_column(column);
 				axis += " ";
 			}
