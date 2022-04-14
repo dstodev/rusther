@@ -6,34 +6,48 @@ use serenity::{
 			Reaction,
 			ReactionType,
 		},
+		id::MessageId,
 	},
 	prelude::*,
 };
 
 use crate::{
-	commands::{
+	commands::game_c4::c4::{
 		ConnectFour,
-		game_c4::c4::GameState,
+		GameState,
+		Player,
 	},
 	rusther::EventSubHandler,
 };
 
-use super::c4::Player;
+pub struct ConnectFourDiscord {
+	game: ConnectFour,
+	message_id: MessageId,
+}
+
+impl ConnectFourDiscord {
+	pub fn new() -> Self {
+		Self {
+			game: ConnectFour::new(7, 6),
+			message_id: MessageId::default(),
+		}
+	}
+}
 
 #[async_trait]
-impl EventSubHandler for ConnectFour {
+impl EventSubHandler for ConnectFourDiscord {
 	async fn message(&mut self, ctx: &Context, new_message: &Message) {
 		let message = &new_message.content;
 
 		if message.as_str() == "c4 start" {
-			self.restart();
+			self.game.restart();
 
 			let say = self.get_render_string();
 
 			if let Ok(m) = new_message.channel_id.say(&ctx.http, say).await {
 				self.message_id = m.id;
 
-				for column in 0..self.board.width() {
+				for column in 0..self.game.board.width() {
 					let reaction = Self::get_reaction_for_column(column);
 
 					// Add one-at-a-time to ensure they are added in order
@@ -46,16 +60,16 @@ impl EventSubHandler for ConnectFour {
 	}
 
 	async fn reaction_add(&mut self, ctx: &Context, add_reaction: &Reaction) {
-		let should_react = self.state == GameState::Playing
+		let should_respond = self.game.state == GameState::Playing
 			&& add_reaction.message_id == self.message_id;
 
-		if should_react {
+		if should_respond {
 			let reaction_unicode = &add_reaction.emoji.as_data();
 
 			if reaction_unicode.ends_with("\u{fe0f}\u{20e3}") {
 				let column = reaction_unicode.as_bytes()[0] - 0x30;
 
-				if self.emplace(column.into()) {
+				if self.game.emplace(column.into()) {
 					let channel_id = add_reaction.channel_id;
 
 					if let Ok(mut message) = channel_id.message(&ctx.http, self.message_id).await {
@@ -64,8 +78,8 @@ impl EventSubHandler for ConnectFour {
 						if let Err(reason) = message.edit(&ctx.http, |builder| builder.content(say)).await {
 							println!("Could not edit message because {:?}", reason);
 						}
-						if self.state == GameState::Closed {
-							for column in 0..self.board.width() {
+						if self.game.state == GameState::Closed || matches!(self.game.state, GameState::Won { .. }) {
+							for column in 0..self.game.board.width() {
 								let emoji = Self::get_reaction_for_column(column);
 
 								if let Err(reason) = message.delete_reaction_emoji(&ctx.http, emoji).await {
@@ -84,7 +98,7 @@ impl EventSubHandler for ConnectFour {
 	}
 }
 
-impl ConnectFour {
+impl ConnectFourDiscord {
 	fn get_reaction_for_column(column: i32) -> ReactionType {
 		assert!((0..10).contains(&column));
 		let triplet = Self::get_reaction_string_for_column(column);
@@ -109,10 +123,10 @@ impl ConnectFour {
 			None => "No",
 		};
 
-		if self.state == GameState::Playing {
-			format!("Current turn: {}\n", player_str(Some(self.turn)))
+		if self.game.state == GameState::Playing {
+			format!("Current turn: {}\n", player_str(Some(self.game.turn)))
 		} else {
-			format!("{} player wins!\n", player_str(self.get_winner()))
+			format!("{} player wins!\n", player_str(self.game.get_winner()))
 		}
 	}
 	fn get_board_string(&self) -> String {
@@ -124,10 +138,11 @@ impl ConnectFour {
 			None => ":green_circle:",
 		};
 
-		for row in 0..self.board.height() {
-			for column in 0..self.board.width() {
-				let player = self.board.get(row, column).cloned();
+		for row in 0..self.game.board.height() {
+			for column in 0..self.game.board.width() {
+				let player = self.game.board.get(row, column).cloned();
 				board += player_str(player);
+				board += " ";
 			}
 			board += "\n";
 		}
@@ -136,9 +151,10 @@ impl ConnectFour {
 	fn get_axis_string(&self) -> String {
 		let mut axis = String::new();
 
-		if self.state == GameState::Playing {
-			for column in 0..self.board.width() {
+		if self.game.state == GameState::Playing {
+			for column in 0..self.game.board.width() {
 				axis += &Self::get_reaction_string_for_column(column);
+				axis += " ";
 			}
 			axis += "\n";
 		}

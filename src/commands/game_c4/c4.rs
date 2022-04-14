@@ -1,8 +1,6 @@
 use std::fmt::{Display, Formatter};
 use std::ops::Not;
 
-use serenity::model::id::MessageId;
-
 use super::board::{Board, Direction};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -36,6 +34,7 @@ impl Not for Player {
 pub enum GameState {
 	Closed,
 	Playing,
+	Won { player: Player },
 }
 
 pub struct ConnectFour {
@@ -44,8 +43,6 @@ pub struct ConnectFour {
 	pub board: Board<Player>,
 	last_pos_r: i32,
 	last_pos_c: i32,
-
-	pub message_id: MessageId,  // TODO: Remove this field. Should not depend on serenity crate.
 }
 
 impl ConnectFour {
@@ -54,7 +51,6 @@ impl ConnectFour {
 			state: GameState::Closed,
 			turn: Player::Red,
 			board: Board::new(width, height),
-			message_id: MessageId::default(),
 			last_pos_r: 0,
 			last_pos_c: 0,
 		}
@@ -63,7 +59,6 @@ impl ConnectFour {
 		self.state = GameState::Playing;
 		self.turn = Player::Red;
 		self.board = Board::new(self.board.width(), self.board.height());
-		self.message_id = MessageId::default();
 	}
 	pub fn emplace(&mut self, column: i32) -> bool {
 		let valid_move = self.state == GameState::Playing
@@ -76,16 +71,15 @@ impl ConnectFour {
 					self.board.set(row, column, self.turn);
 					self.last_pos_r = row;
 					self.last_pos_c = column;
-					self.turn = !self.turn;
 
-					if let Some(_winner) = self.get_winner() {
+					if let Some(player) = self.get_winner() {
 						//self.board.fill(winner);  // Cool effect, but obscures the winning move
-						self.state = GameState::Closed;
+						self.state = GameState::Won { player };
 					} else if self.board.data().iter().all(|e| e.is_some()) {
 						// Board is full, but there are no winners. A draw!
 						self.state = GameState::Closed;
 					}
-
+					self.turn = !self.turn;
 					return true;
 				}
 			}
@@ -93,6 +87,10 @@ impl ConnectFour {
 		false
 	}
 	pub fn get_winner(&self) -> Option<Player> {
+		if let GameState::Won { player } = self.state {
+			return Some(player);
+		}
+
 		let row = self.last_pos_r;
 		let column = self.last_pos_c;
 
@@ -113,7 +111,7 @@ impl ConnectFour {
 		let max = up_down.max(left_right).max(tl_br).max(bl_tr);
 
 		if max >= 4 {
-			Some(!self.turn)  // Negate because the turn is already toggled by now
+			Some(self.turn)
 		} else {
 			None
 		}
@@ -375,7 +373,7 @@ mod tests {
 
 		assert!(cf.emplace(0));  // R (2,0) victory
 
-		assert_eq!(GameState::Closed, cf.state);
+		assert_eq!(GameState::Won { player: Player::Red }, cf.state);
 		assert_eq!(Some(Player::Red), cf.get_winner());
 	}
 
@@ -408,7 +406,7 @@ mod tests {
 
 		assert!(cf.emplace(3)); // R (5,3) victory
 
-		assert_eq!(GameState::Closed, cf.state);
+		assert_eq!(GameState::Won { player: Player::Red }, cf.state);
 		assert_eq!(Some(Player::Red), cf.get_winner());
 	}
 
@@ -458,12 +456,12 @@ mod tests {
 
 		assert!(cf.emplace(3)); // R (5,3) victory
 
-		assert_eq!(GameState::Closed, cf.state);
+		assert_eq!(GameState::Won { player: Player::Red }, cf.state);
 		assert_eq!(Some(Player::Red), cf.get_winner());
 
 		assert!(/* returns false */ !cf.emplace(3)); // B (4,3) attempt after victory
 
-		assert_eq!(GameState::Closed, cf.state);
+		assert_eq!(GameState::Won { player: Player::Red }, cf.state);
 		assert_eq!(Some(Player::Red), cf.get_winner());
 	}
 

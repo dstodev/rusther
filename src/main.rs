@@ -14,7 +14,7 @@ fn main() -> Result<(), String> {
 
 	arbiter.register_event_handler("ping", Box::new(commands::Ping::new()))?;
 	arbiter.register_event_handler("announce", Box::new(commands::Announce))?;
-	arbiter.register_event_handler("connect_four", Box::new(commands::ConnectFour::new(7, 6)))?;
+	arbiter.register_event_handler("connect_four", Box::new(commands::ConnectFourDiscord::new()))?;
 
 	let token = get_token().unwrap();
 
