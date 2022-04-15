@@ -151,7 +151,7 @@ impl ConnectFourDiscord {
 		let player_str = |p| match p {
 			Some(Player::Red) => ":red_circle:",
 			Some(Player::Blue) => ":blue_circle:",
-			None => ":green_circle:",
+			None => ":black_circle:",
 		};
 
 		for row in 0..game.board.height() {
