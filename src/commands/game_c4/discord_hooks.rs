@@ -86,11 +86,10 @@ impl EventSubHandler for ConnectFourDiscord {
 							self.games.remove(&id);
 						}
 					}
-
-					if let Err(reason) = add_reaction.delete(&ctx.http).await {
-						println!("Could not remove reaction because {:?}", reason);
-					};
 				}
+				if let Err(reason) = add_reaction.delete(&ctx.http).await {
+					println!("Could not remove reaction because {:?}", reason);
+				};
 			}
 		}
 	}
