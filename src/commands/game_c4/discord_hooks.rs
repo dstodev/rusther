@@ -25,6 +25,7 @@ use crate::{
 struct ConnectFourContext {
 	game: ConnectFour,
 	message: Message,
+	reactions: Vec<Reaction>,
 }
 
 impl ConnectFourContext {
@@ -32,6 +33,7 @@ impl ConnectFourContext {
 		Self {
 			game,
 			message,
+			reactions: Vec::new(),
 		}
 	}
 }
@@ -62,14 +64,21 @@ impl EventSubHandler for ConnectFourDiscord {
 				let context = ConnectFourContext::new(game, message);
 
 				if self.games.insert(id, context).is_some() {
-					panic!("C4 hashmap key collision!");
+					println!("C4 hashmap key collision!");
 				}
-				if let Some(context) = self.games.get(&id) {
+				if let Some(context) = self.games.get_mut(&id) {
+					let reaction_cache = &mut context.reactions;
 					let width = context.game.board.width();
-					Self::add_reactions_to(&context.message, width, ctx).await;
+					Self::add_reactions_to(&context.message, reaction_cache, width, ctx).await;
 				}
 			}
-		};
+		} else if message.as_str() == "c4 purge" {
+			let map = Vec::from_iter(self.games.drain());
+
+			for (_id, context) in map {
+				Self::finalize_game(context, ctx).await;
+			}
+		}
 	}
 	async fn reaction_add(&mut self, ctx: &Context, add_reaction: &Reaction) {
 		let id = add_reaction.message_id;
@@ -85,16 +94,11 @@ impl EventSubHandler for ConnectFourDiscord {
 				let column = reaction_unicode.as_bytes()[0] - 0x30;
 
 				if game.emplace(column.into()) {
-					let message = &mut context.message;
-					let say = Self::get_render_string(game);
-
-					if let Err(reason) = message.edit(&ctx.http, |builder| builder.content(say)).await {
-						println!("Could not edit message because {:?}", reason);
-					}
-					if game.state == GameState::Closed || matches!(game.state, GameState::Won { .. }) {
-						let width = game.board.width();
-						Self::remove_reactions_from(message, width, ctx).await;
-						self.games.remove(&id);
+					if game.state == GameState::Playing {
+						let message = &mut context.message;
+						Self::render_to_message(game, message, ctx).await;
+					} else if let Some(context) = self.games.remove(&id) {  // The game has ended, remove it from memory.
+						Self::finalize_game(context, ctx).await;
 					}
 				}
 				if let Err(reason) = add_reaction.delete(&ctx.http).await {
@@ -106,23 +110,35 @@ impl EventSubHandler for ConnectFourDiscord {
 }
 
 impl ConnectFourDiscord {
-	async fn add_reactions_to(message: &Message, width: i32, ctx: &Context) {
+	async fn add_reactions_to(message: &Message, reaction_cache: &mut Vec<Reaction>, width: i32, ctx: &Context) {
 		for column in 0..width {
 			let reaction = Self::get_reaction_for_column(column);
 
 			// Add one-at-a-time to ensure they are added in order
-			if let Err(reason) = message.react(&ctx.http, reaction).await {
-				println!("Could not react because {:?}", reason);
+			match message.react(&ctx.http, reaction).await {
+				Ok(reaction) => reaction_cache.push(reaction),
+				Err(reason) => println!("Could not react because {:?}", reason),
 			}
 		}
 	}
-	async fn remove_reactions_from(message: &Message, width: i32, ctx: &Context) {
-		for column in 0..width {
-			let emoji = Self::get_reaction_for_column(column);
+	async fn finalize_game(mut context: ConnectFourContext, ctx: &Context) {
+		// If a player has won, do not override the game state to closed i.e. 'draw'.
+		if context.game.state == GameState::Playing {
+			context.game.state = GameState::Closed;
+		}
+		Self::render_to_message(&context.game, &mut context.message, ctx).await;
+		Self::delete_reactions(&mut context.reactions, ctx).await;
+	}
+	async fn render_to_message(game: &ConnectFour, message: &mut Message, ctx: &Context) {
+		let say = Self::get_render_string(game);
 
-			if let Err(reason) = message.delete_reaction_emoji(&ctx.http, emoji).await {
-				println!("Could not remove reaction because {:?}", reason);
-			}
+		if let Err(reason) = message.edit(&ctx.http, |builder| builder.content(say)).await {
+			println!("Could not edit message because {:?}", reason);
+		}
+	}
+	async fn delete_reactions(reactions: &mut Vec<Reaction>, ctx: &Context) {
+		for reaction in reactions {
+			let _ = reaction.delete(&ctx.http).await;
 		}
 	}
 	fn get_reaction_for_column(column: i32) -> ReactionType {
