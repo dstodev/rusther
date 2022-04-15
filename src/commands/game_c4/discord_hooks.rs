@@ -22,8 +22,22 @@ use crate::{
 	rusther::EventSubHandler,
 };
 
+struct ConnectFourContext {
+	game: ConnectFour,
+	message: Message,
+}
+
+impl ConnectFourContext {
+	pub fn new(game: ConnectFour, message: Message) -> Self {
+		Self {
+			game,
+			message,
+		}
+	}
+}
+
 pub struct ConnectFourDiscord {
-	games: HashMap<MessageId, ConnectFour>,
+	games: HashMap<MessageId, ConnectFourContext>,
 }
 
 impl ConnectFourDiscord {
@@ -40,28 +54,28 @@ impl EventSubHandler for ConnectFourDiscord {
 		let message = &new_message.content;
 
 		if message.as_str() == "c4 start" {
-			let mut game = ConnectFour::new(7, 6);
-
-			game.restart();
-
+			let game = ConnectFour::new(7, 6);
 			let say = Self::get_render_string(&game);
 
 			if let Ok(message) = new_message.channel_id.say(&ctx.http, say).await {
 				let id = message.id;
-				let width = game.board.width();
+				let context = ConnectFourContext::new(game, message);
 
-				if self.games.insert(id, game).is_some() {
+				if self.games.insert(id, context).is_some() {
 					panic!("C4 hashmap key collision!");
 				}
-
-				Self::add_reactions_to(&message, width, ctx).await;
+				if let Some(context) = self.games.get(&id) {
+					let width = context.game.board.width();
+					Self::add_reactions_to(&context.message, width, ctx).await;
+				}
 			}
 		};
 	}
 	async fn reaction_add(&mut self, ctx: &Context, add_reaction: &Reaction) {
 		let id = add_reaction.message_id;
 
-		if let Some(game) = self.games.get_mut(&id) {
+		if let Some(context) = self.games.get_mut(&id) {
+			let game = &mut context.game;
 			let reaction_unicode = &add_reaction.emoji.as_data();
 
 			let should_respond = game.state == GameState::Playing
@@ -71,20 +85,16 @@ impl EventSubHandler for ConnectFourDiscord {
 				let column = reaction_unicode.as_bytes()[0] - 0x30;
 
 				if game.emplace(column.into()) {
-					let channel_id = add_reaction.channel_id;
+					let message = &mut context.message;
+					let say = Self::get_render_string(game);
 
-					if let Ok(mut message) = channel_id.message(&ctx.http, id).await {
-						let say = Self::get_render_string(game);
-
-						if let Err(reason) = message.edit(&ctx.http, |builder| builder.content(say)).await {
-							println!("Could not edit message because {:?}", reason);
-						}
-						if game.state == GameState::Closed || matches!(game.state, GameState::Won { .. }) {
-							let width = game.board.width();
-							Self::remove_reactions_from(&message, width, ctx).await;
-
-							self.games.remove(&id);
-						}
+					if let Err(reason) = message.edit(&ctx.http, |builder| builder.content(say)).await {
+						println!("Could not edit message because {:?}", reason);
+					}
+					if game.state == GameState::Closed || matches!(game.state, GameState::Won { .. }) {
+						let width = game.board.width();
+						Self::remove_reactions_from(message, width, ctx).await;
+						self.games.remove(&id);
 					}
 				}
 				if let Err(reason) = add_reaction.delete(&ctx.http).await {

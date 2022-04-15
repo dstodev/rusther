@@ -48,17 +48,12 @@ pub struct ConnectFour {
 impl ConnectFour {
 	pub fn new(width: i32, height: i32) -> Self {
 		Self {
-			state: GameState::Closed,
+			state: GameState::Playing,
 			turn: Player::Red,
 			board: Board::new(width, height),
 			last_pos_r: 0,
 			last_pos_c: 0,
 		}
-	}
-	pub fn restart(&mut self) {
-		self.state = GameState::Playing;
-		self.turn = Player::Red;
-		self.board = Board::new(self.board.width(), self.board.height());
 	}
 	pub fn emplace(&mut self, column: i32) -> bool {
 		let valid_move = self.state == GameState::Playing
@@ -137,22 +132,15 @@ mod tests {
 	#[test]
 	fn test_new_default() {
 		let cf = ConnectFour::new(7, 6);
-		assert_eq!(GameState::Closed, cf.state);
-		assert_eq!(Player::Red, cf.turn);
-	}
-
-	#[test]
-	fn test_restart() {
-		let mut cf = ConnectFour::new(7, 6);
-		cf.restart();
 		assert_eq!(GameState::Playing, cf.state);
 		assert_eq!(Player::Red, cf.turn);
+		assert_eq!(7, cf.board.width());
+		assert_eq!(6, cf.board.height());
 	}
 
 	#[test]
 	fn test_emplace_col0() {
 		let mut cf = ConnectFour::new(7, 6);
-		cf.restart();
 		assert!(cf.emplace(0) /* column 0 */);
 
 		/* In a default [7 wide] by [6 high] board, emplace(0) would place in the far left column:
@@ -172,7 +160,6 @@ mod tests {
 	#[test]
 	fn test_emplace_col0_when_closed() {
 		let mut cf = ConnectFour::new(7, 6);
-		cf.restart();
 		cf.state = GameState::Closed;
 		assert!(/* returns false */ !cf.emplace(0));
 		/*
@@ -191,7 +178,6 @@ mod tests {
 	#[test]
 	fn test_emplace_col0_twice() {
 		let mut cf = ConnectFour::new(7, 6);
-		cf.restart();
 		assert!(cf.emplace(0));
 		assert!(cf.emplace(0));
 		/*
@@ -211,7 +197,6 @@ mod tests {
 	#[test]
 	fn test_emplace_col6() {
 		let mut cf = ConnectFour::new(7, 6);
-		cf.restart();
 		assert!(cf.emplace(6));
 		/*
 			   0 1 2 3 4 5 6
@@ -229,7 +214,6 @@ mod tests {
 	#[test]
 	fn test_emplace_col7_out_of_bounds() {
 		let mut cf = ConnectFour::new(7, 6);
-		cf.restart();
 		assert_eq!(Player::Red, cf.turn);
 		assert!(/* returns false */ !cf.emplace(7));
 		assert_eq!(Player::Red, cf.turn);
@@ -238,7 +222,6 @@ mod tests {
 	#[test]
 	fn test_emplace_coln1_out_of_bounds() {
 		let mut cf = ConnectFour::new(7, 6);
-		cf.restart();
 		assert_eq!(Player::Red, cf.turn);
 		assert!(/* returns false */ !cf.emplace(-1));
 		assert_eq!(Player::Red, cf.turn);
@@ -247,7 +230,6 @@ mod tests {
 	#[test]
 	fn test_emplace_col0_six_times() {
 		let mut cf = ConnectFour::new(7, 6);
-		cf.restart();
 
 		for _ in 0..6 {
 			assert!(cf.emplace(0));
@@ -273,7 +255,6 @@ mod tests {
 	#[test]
 	fn test_emplace_col0_seven_times() {
 		let mut cf = ConnectFour::new(7, 6);
-		cf.restart();
 
 		for _ in 0..6 {
 			assert!(cf.emplace(0));
@@ -300,15 +281,13 @@ mod tests {
 
 	#[test]
 	fn test_get_winner_none() {
-		let mut cf = ConnectFour::new(7, 6);
-		cf.restart();
+		let cf = ConnectFour::new(7, 6);
 		assert_eq!(None, cf.get_winner());
 	}
 
 	#[test]
 	fn test_get_winner_4tall_mixed() {
 		let mut cf = ConnectFour::new(7, 6);
-		cf.restart();
 
 		for _ in 0..4 {
 			assert!(cf.emplace(0));
@@ -328,7 +307,6 @@ mod tests {
 	#[test]
 	fn test_get_winner_3tall_red() {
 		let mut cf = ConnectFour::new(7, 6);
-		cf.restart();
 
 		assert!(cf.emplace(0));  // R (5,0)
 		assert!(cf.emplace(1));  // B (5,1)
@@ -350,7 +328,6 @@ mod tests {
 	#[test]
 	fn test_get_winner_4tall_red() {
 		let mut cf = ConnectFour::new(7, 6);
-		cf.restart();
 
 		assert!(cf.emplace(0));  // R (5,0)
 		assert!(cf.emplace(1));  // B (5,1)
@@ -380,7 +357,6 @@ mod tests {
 	#[test]
 	fn test_get_winner_5wide_red() {
 		let mut cf = ConnectFour::new(7, 6);
-		cf.restart();
 
 		assert!(cf.emplace(0));  // R (5,0)
 		assert!(cf.emplace(0));  // B (4,0)
@@ -413,7 +389,6 @@ mod tests {
 	#[test]
 	fn test_get_winner_none_tie() {
 		let mut cf = ConnectFour::new(2, 1);
-		cf.restart();
 
 		assert!(cf.emplace(0));  // R (0,0)
 		/*
@@ -432,7 +407,6 @@ mod tests {
 	#[test]
 	fn test_get_winner_after_red_won() {
 		let mut cf = ConnectFour::new(7, 6);
-		cf.restart();
 
 		assert!(cf.emplace(0));  // R (5,0)
 		assert!(cf.emplace(0));  // B (4,0)
@@ -468,7 +442,6 @@ mod tests {
 	#[test]
 	fn test_get_count_in_direction() {
 		let mut cf = ConnectFour::new(7, 6);
-		cf.restart();
 
 		cf.board.set(2, 1, Player::Red);
 		cf.board.set(3, 1, Player::Red);
