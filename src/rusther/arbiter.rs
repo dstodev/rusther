@@ -121,8 +121,8 @@ impl EventHandler for Arbiter {
 		let state = self.state.clone().lock_owned().await;
 
 		tokio::spawn(async move {
-			if let Ok(user) = add_reaction.user(&ctx.http).await {
-				if user.id == state.user_id {
+			if let Some(user_id) = add_reaction.user_id {
+				if user_id == ctx.cache.current_user().await.id {
 					log::trace!("Skipping own reaction_add");
 					return;
 				}

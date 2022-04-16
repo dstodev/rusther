@@ -21,6 +21,8 @@ fn main() -> Result<(), String> {
 		.init()
 		.unwrap();
 
+	log::trace!("Logger initialized");
+
 	let mut arbiter = Arbiter::new();
 
 	arbiter.register_event_handler("ping", Box::new(commands::Ping::new()))?;
