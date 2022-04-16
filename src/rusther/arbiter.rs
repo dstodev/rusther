@@ -14,17 +14,14 @@ use serenity::{
 	},
 	prelude::*,
 };
-use tokio::{
-	sync::Mutex,
-	task::yield_now,
-};
+use tokio::sync::Mutex;
 
 use crate::rusther::EventSubHandler;
 
 type CommandHandler = Box<dyn EventSubHandler>;
 
 struct InstanceState {
-	commands: HashMap<&'static str, CommandHandler>,
+	commands: HashMap<&'static str, Arc<Mutex<CommandHandler>>>,
 	user_id: UserId,
 }
 
@@ -53,7 +50,9 @@ impl Arbiter {
 	pub fn register_event_handler(&mut self, name: &'static str, handler: CommandHandler) -> Result<(), String> {
 		let mut state = self.state.blocking_lock();
 
-		if state.commands.insert(name, handler).is_some() {
+		if state.commands
+		        .insert(name, Arc::new(Mutex::new(handler)))
+		        .is_some() {
 			return Err(format!("A command named '{}' already exists!", name));
 		}
 		Ok(())
@@ -71,59 +70,71 @@ impl Arbiter {
 #[async_trait]
 impl EventHandler for Arbiter {
 	async fn message(&self, ctx: Context, mut msg: Message) {
-		let mutex = self.state.clone().lock_owned();
+		let state = self.state.lock().await;
 		let prefix = self.command_prefix;
 
-		tokio::spawn(async move {
-			let mut state = mutex.await;
+		if msg.author.id == state.user_id {
+			log::trace!("Skipping own message");
+			return;
+		}
+		if msg.content.starts_with(prefix) {
+			msg.content = Self::sanitize(msg.content);
 
-			if msg.author.id == state.user_id {
-				log::trace!("Skipping own message");
-				return;
-			}
-			if msg.content.starts_with(prefix) {
-				msg.content = Self::sanitize(msg.content);
+			for handler in state.commands.values().cloned() {
+				// Clone inputs--each set will be moved to a task.
+				let sub_ctx = ctx.clone();
+				let sub_msg = msg.clone();
 
-				for handler in state.commands.values_mut() {
-					handler.message(&ctx, &msg).await;
-					yield_now().await;
-				}
+				tokio::spawn(async move {
+					let mut lock = handler.lock().await;
+					lock.message(&sub_ctx, &sub_msg).await;
+				});
 			}
-		});
+		}
 	}
 	async fn message_update(&self, ctx: Context, _old_if_available: Option<Message>, _new: Option<Message>, event: MessageUpdateEvent) {
-		let mutex = self.state.clone().lock_owned();
+		// This is the simpler form of acquiring the state,
+		// and it is used when tasks are not given the state.
+		let state = self.state.lock().await;
 
-		tokio::spawn(async move {
-			let mut state = mutex.await;
+		// This kind of setup does not need to be awaited, so no need for a wrapper task.
+		if let Some(user) = &event.author {
+			if user.id == state.user_id {
+				log::trace!("Skipping own message_update");
+				return;
+			}
+		}
+		for handler in state.commands.values().cloned() {
+			let sub_ctx = ctx.clone();
+			let sub_event = event.clone();
 
-			if let Some(user) = &event.author {
-				if user.id == state.user_id {
-					log::trace!("Skipping own message_update");
-					return;
-				}
-			}
-			for handler in state.commands.values_mut() {
-				handler.message_update(&ctx, &event).await;
-				yield_now().await;
-			}
-		});
+			tokio::spawn(async move {
+				let mut lock = handler.lock().await;
+				lock.message_update(&sub_ctx, &sub_event).await;
+			});
+		}
 	}
 	async fn reaction_add(&self, ctx: Context, add_reaction: Reaction) {
-		let mutex = self.state.clone().lock_owned();
+		// .clone().lock_owned() must be used when the setup takes time, e.g. waiting for
+		// a reference to a user; when the role of dispatching tasks becomes a task in itself.
+		// This is because it allows the state pointer to be moved to a task.
+		let state = self.state.clone().lock_owned().await;
 
 		tokio::spawn(async move {
-			let mut state = mutex.await;
-
 			if let Ok(user) = add_reaction.user(&ctx.http).await {
 				if user.id == state.user_id {
 					log::trace!("Skipping own reaction_add");
 					return;
 				}
 			}
-			for handler in state.commands.values_mut() {
-				handler.reaction_add(&ctx, &add_reaction).await;
-				yield_now().await;
+			for handler in state.commands.values().cloned() {
+				let sub_ctx = ctx.clone();
+				let sub_add_reaction = add_reaction.clone();
+
+				tokio::spawn(async move {
+					let mut lock = handler.lock().await;
+					lock.reaction_add(&sub_ctx, &sub_add_reaction).await;
+				});
 			}
 		});
 	}
@@ -132,23 +143,22 @@ impl EventHandler for Arbiter {
 
 		// self.state is an Arc<>, so cloning it is not "cloning" the context, per-se. Instead,
 		// it is cloning the pointer to the state, which is locked behind a mutex.
-		let mutex = self.state.clone().lock_owned();
+		let mut state = self.state.lock().await;
 
-		tokio::spawn(async move {
-			// The task will lock the state and work through the event sub-handlers one-at-a-time
-			// until the input has fully propagated.
-			let mut state = mutex.await;
+		state.user_id = ready.user.id;  // Store bot instance's id for later comparisons
 
-			state.user_id = ready.user.id;  // Store bot instance's id for later comparisons
+		// Spawn a task for each sub-handler.
+		for handler in state.commands.values().cloned() {
+			// Clone inputs--each set will be moved to a task.
+			let sub_ctx = ctx.clone();
+			let sub_ready = ready.clone();
 
-			for handler in state.commands.values_mut() {
-				handler.ready(&ctx, &ready).await;
-
-				// The task should yield after each sub-handler completes, to give other tasks time
-				// to process as well.
-				yield_now().await;
-			}
-		});
+			tokio::spawn(async move {
+				// Each task will wait for and then give input to a sub-handler.
+				let mut lock = handler.lock().await;
+				lock.ready(&sub_ctx, &sub_ready).await;
+			});
+		}
 	}
 }
 
