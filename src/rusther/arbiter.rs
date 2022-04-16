@@ -70,21 +70,26 @@ impl Arbiter {
 #[async_trait]
 impl EventHandler for Arbiter {
 	async fn message(&self, ctx: Context, mut msg: Message) {
-		let mut state = self.state.lock().await;
+		let mutex = self.state.clone().lock_owned();
+		let prefix = self.command_prefix;
 
-		if msg.author.id == state.user_id {
-			log::trace!("Skipping own message");
-			return;
-		}
-		if msg.content.starts_with(self.command_prefix) {
-			msg.content = Self::sanitize(msg.content);
+		tokio::spawn(async move {
+			let mut state = mutex.await;
 
-			join_all(state
-				.commands
-				.values_mut()
-				.map(|handler| handler.message(&ctx, &msg))
-			).await;
-		}
+			if msg.author.id == state.user_id {
+				log::trace!("Skipping own message");
+				return;
+			}
+			if msg.content.starts_with(prefix) {
+				msg.content = Self::sanitize(msg.content);
+
+				join_all(state
+					.commands
+					.values_mut()
+					.map(|handler| handler.message(&ctx, &msg))
+				).await;
+			}
+		});
 	}
 	async fn message_update(&self, ctx: Context, _old_if_available: Option<Message>, _new: Option<Message>, event: MessageUpdateEvent) {
 		let mut state = self.state.lock().await;

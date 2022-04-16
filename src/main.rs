@@ -41,7 +41,7 @@ fn main() -> Result<(), String> {
 			.expect("Could not create client!");
 
 		if let Err(reason) = client.start().await {
-			log::debug!("Client failed with: {:?}", reason);
+			log::debug!("Client failed to start because {:?}", reason);
 		}
 	});
 
