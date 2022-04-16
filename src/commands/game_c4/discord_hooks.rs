@@ -12,6 +12,7 @@ use serenity::{
 	},
 	prelude::*,
 };
+use tokio::task::yield_now;
 
 use crate::{
 	commands::game_c4::c4::{
@@ -127,7 +128,7 @@ impl ConnectFourDiscord {
 			context.game.state = GameState::Closed;
 		}
 		Self::render_to_message(&context.game, &mut context.message, ctx).await;
-		Self::delete_reactions(&mut context.reactions, ctx).await;
+		Self::delete_reactions(context.reactions, ctx).await;
 	}
 	async fn render_to_message(game: &ConnectFour, message: &mut Message, ctx: &Context) {
 		let say = Self::get_render_string(game);
@@ -136,10 +137,15 @@ impl ConnectFourDiscord {
 			log::debug!("Could not edit message because {:?}", reason);
 		}
 	}
-	async fn delete_reactions(reactions: &mut Vec<Reaction>, ctx: &Context) {
-		for reaction in reactions {
-			let _ = reaction.delete(&ctx.http).await;
-		}
+	async fn delete_reactions(reactions: Vec<Reaction>, ctx: &Context) {
+		let http = ctx.http.clone();
+
+		tokio::spawn(async move {
+			for reaction in reactions {
+				let _ = reaction.delete(http.clone()).await;
+				yield_now().await;
+			}
+		});
 	}
 	fn get_reaction_for_column(column: i32) -> ReactionType {
 		assert!((0..10).contains(&column));

@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use serenity::{
 	async_trait,
-	futures::future::join_all,
 	model::{
 		channel::{
 			Message,
@@ -15,7 +14,10 @@ use serenity::{
 	},
 	prelude::*,
 };
-use tokio::sync::Mutex;
+use tokio::{
+	sync::Mutex,
+	task::yield_now,
+};
 
 use crate::rusther::EventSubHandler;
 
@@ -82,11 +84,10 @@ impl EventHandler for Arbiter {
 			if msg.content.starts_with(prefix) {
 				msg.content = Self::sanitize(msg.content);
 
-				join_all(state
-					.commands
-					.values_mut()
-					.map(|handler| handler.message(&ctx, &msg))
-				).await;
+				for handler in state.commands.values_mut() {
+					handler.message(&ctx, &msg).await;
+					yield_now().await;
+				}
 			}
 		});
 	}
@@ -102,11 +103,10 @@ impl EventHandler for Arbiter {
 					return;
 				}
 			}
-			join_all(state
-				.commands
-				.values_mut()
-				.map(|handler| handler.message_update(&ctx, &event))
-			).await;
+			for handler in state.commands.values_mut() {
+				handler.message_update(&ctx, &event).await;
+				yield_now().await;
+			}
 		});
 	}
 	async fn reaction_add(&self, ctx: Context, add_reaction: Reaction) {
@@ -121,27 +121,33 @@ impl EventHandler for Arbiter {
 					return;
 				}
 			}
-			join_all(state
-				.commands
-				.values_mut()
-				.map(|handler| handler.reaction_add(&ctx, &add_reaction))
-			).await;
+			for handler in state.commands.values_mut() {
+				handler.reaction_add(&ctx, &add_reaction).await;
+				yield_now().await;
+			}
 		});
 	}
 	async fn ready(&self, ctx: Context, ready: Ready) {
 		// This function should remain the simplest event forwarder, as example.
+
+		// self.state is an Arc<>, so cloning it is not "cloning" the context, per-se. Instead,
+		// it is cloning the pointer to the state, which is locked behind a mutex.
 		let mutex = self.state.clone().lock_owned();
 
 		tokio::spawn(async move {
+			// The task will lock the state and work through the event sub-handlers one-at-a-time
+			// until the input has fully propagated.
 			let mut state = mutex.await;
 
 			state.user_id = ready.user.id;  // Store bot instance's id for later comparisons
 
-			join_all(state
-				.commands
-				.values_mut()
-				.map(|handler| handler.ready(&ctx, &ready))
-			).await;
+			for handler in state.commands.values_mut() {
+				handler.ready(&ctx, &ready).await;
+
+				// The task should yield after each sub-handler completes, to give other tasks time
+				// to process as well.
+				yield_now().await;
+			}
 		});
 	}
 }
