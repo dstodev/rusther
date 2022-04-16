@@ -46,7 +46,6 @@ impl Arbiter {
 		Self {
 			command_prefix: '!',
 			state: Arc::new(Mutex::new(InstanceState::new())),
-
 		}
 	}
 	pub fn register_event_handler(&mut self, name: &'static str, handler: CommandHandler) -> Result<(), String> {
@@ -92,46 +91,58 @@ impl EventHandler for Arbiter {
 		});
 	}
 	async fn message_update(&self, ctx: Context, _old_if_available: Option<Message>, _new: Option<Message>, event: MessageUpdateEvent) {
-		let mut state = self.state.lock().await;
+		let mutex = self.state.clone().lock_owned();
 
-		if let Some(user) = &event.author {
-			if user.id == state.user_id {
-				log::trace!("Skipping own message_update");
-				return;
+		tokio::spawn(async move {
+			let mut state = mutex.await;
+
+			if let Some(user) = &event.author {
+				if user.id == state.user_id {
+					log::trace!("Skipping own message_update");
+					return;
+				}
 			}
-		}
-		join_all(state
-			.commands
-			.values_mut()
-			.map(|handler| handler.message_update(&ctx, &event))
-		).await;
+			join_all(state
+				.commands
+				.values_mut()
+				.map(|handler| handler.message_update(&ctx, &event))
+			).await;
+		});
 	}
 	async fn reaction_add(&self, ctx: Context, add_reaction: Reaction) {
-		let mut state = self.state.lock().await;
+		let mutex = self.state.clone().lock_owned();
 
-		if let Ok(user) = add_reaction.user(&ctx.http).await {
-			if user.id == state.user_id {
-				log::trace!("Skipping own reaction_add");
-				return;
+		tokio::spawn(async move {
+			let mut state = mutex.await;
+
+			if let Ok(user) = add_reaction.user(&ctx.http).await {
+				if user.id == state.user_id {
+					log::trace!("Skipping own reaction_add");
+					return;
+				}
 			}
-		}
-		join_all(state
-			.commands
-			.values_mut()
-			.map(|handler| handler.reaction_add(&ctx, &add_reaction))
-		).await;
+			join_all(state
+				.commands
+				.values_mut()
+				.map(|handler| handler.reaction_add(&ctx, &add_reaction))
+			).await;
+		});
 	}
 	async fn ready(&self, ctx: Context, ready: Ready) {
 		// This function should remain the simplest event forwarder, as example.
-		let mut state = self.state.lock().await;
+		let mutex = self.state.clone().lock_owned();
 
-		state.user_id = ready.user.id;  // Store bot instance's id for later comparisons
+		tokio::spawn(async move {
+			let mut state = mutex.await;
 
-		join_all(state
-			.commands
-			.values_mut()
-			.map(|handler| handler.ready(&ctx, &ready))
-		).await;
+			state.user_id = ready.user.id;  // Store bot instance's id for later comparisons
+
+			join_all(state
+				.commands
+				.values_mut()
+				.map(|handler| handler.ready(&ctx, &ready))
+			).await;
+		});
 	}
 }
 
