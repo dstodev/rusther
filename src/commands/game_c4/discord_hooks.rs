@@ -122,6 +122,16 @@ impl ConnectFourDiscord {
 			}
 		}
 	}
+	fn get_reaction_for_column(column: i32) -> ReactionType {
+		assert!((0..10).contains(&column));
+		let triplet = Self::get_reaction_string_for_column(column);
+		ReactionType::Unicode(triplet)
+	}
+	fn get_reaction_string_for_column(column: i32) -> String {
+		// Using unicode keycap symbols of the form <ascii value for number><unicode fe0f 20e3>,
+		// see: https://unicode.org/emoji/charts-12.0/full-emoji-list.html#0030_fe0f_20e3
+		format!("{}\u{fe0f}\u{20e3}", column)
+	}
 	async fn finalize_game(mut context: ConnectFourContext, ctx: &Context) {
 		// If a player has won, do not override the game state to closed i.e. 'draw'.
 		if context.game.state == GameState::Playing {
@@ -147,16 +157,6 @@ impl ConnectFourDiscord {
 			}
 		});
 	}
-	fn get_reaction_for_column(column: i32) -> ReactionType {
-		assert!((0..10).contains(&column));
-		let triplet = Self::get_reaction_string_for_column(column);
-		ReactionType::Unicode(triplet)
-	}
-	fn get_reaction_string_for_column(column: i32) -> String {
-		// Using unicode keycap symbols of the form <ascii value for number><unicode fe0f 20e3>,
-		// see: https://unicode.org/emoji/charts-12.0/full-emoji-list.html#0030_fe0f_20e3
-		format!("{}\u{fe0f}\u{20e3}", column)
-	}
 	fn get_render_string(game: &ConnectFour) -> String {
 		format!("{}{}{}",
 		        Self::get_header_string(game),
@@ -165,36 +165,40 @@ impl ConnectFourDiscord {
 		)
 	}
 	fn get_header_string(game: &ConnectFour) -> String {
-		let player_str = |p| match p {
-			Some(Player::Red) => "Red",
-			Some(Player::Blue) => "Blue",
-			None => "No",
-		};
-
 		if game.state == GameState::Playing {
-			format!("Current turn: {}\n", player_str(Some(game.turn)))
+			let player = Some(game.turn);
+			return format!("Current turn: {}\n", Self::get_player_label(player));
 		} else {
-			format!("{} player wins!\n", player_str(game.get_winner()))
+			let player = game.get_winner();
+			return format!("{} player wins!\n", Self::get_player_label(player));
 		}
 	}
 	fn get_board_string(game: &ConnectFour) -> String {
 		let mut board = String::new();
 
-		let player_str = |p| match p {
-			Some(Player::Red) => ":red_circle:",
-			Some(Player::Blue) => ":blue_circle:",
-			None => ":black_circle:",
-		};
-
 		for row in 0..game.board.height() {
 			for column in 0..game.board.width() {
 				let player = game.board.get(row, column).cloned();
-				board += player_str(player);
+				board += Self::get_player_token(player);
 				board += " ";
 			}
 			board += "\n";
 		}
 		board
+	}
+	fn get_player_label(player: Option<Player>) -> String {
+		format!("{} {}", Self::get_player_token(player), match player {
+			Some(Player::Red) => "Red",
+			Some(Player::Blue) => "Blue",
+			None => "No",
+		})
+	}
+	fn get_player_token(player: Option<Player>) -> &'static str {
+		match player {
+			Some(Player::Red) => ":red_circle:",
+			Some(Player::Blue) => ":blue_circle:",
+			None => ":black_circle:",
+		}
 	}
 	fn get_axis_string(game: &ConnectFour) -> String {
 		let mut axis = String::new();
