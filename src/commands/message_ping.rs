@@ -27,7 +27,7 @@ impl EventSubHandler for Ping {
 				let message = format!("Welcome #{}!", self.value);
 
 				if let Err(reason) = msg.channel_id.say(&ctx.http, message).await {
-					println!("Could not send message because {}", reason);
+					log::debug!("Could not send message because {}", reason);
 				}
 			}
 			_ => {}

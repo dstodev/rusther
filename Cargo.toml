@@ -8,6 +8,8 @@ edition = "2021"
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
+log = "0.4"
+simple_logger = { version = "2.1.0", features = ["colored", "timestamps"] }
 
 [dependencies.serenity]
 version = "0.10"

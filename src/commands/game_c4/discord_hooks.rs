@@ -64,7 +64,7 @@ impl EventSubHandler for ConnectFourDiscord {
 				let context = ConnectFourContext::new(game, message);
 
 				if self.games.insert(id, context).is_some() {
-					println!("C4 hashmap key collision!");
+					log::debug!("C4 hashmap key collision!");
 				}
 				if let Some(context) = self.games.get_mut(&id) {
 					let reaction_cache = &mut context.reactions;
@@ -102,7 +102,7 @@ impl EventSubHandler for ConnectFourDiscord {
 					}
 				}
 				if let Err(reason) = add_reaction.delete(&ctx.http).await {
-					println!("Could not remove reaction because {:?}", reason);
+					log::debug!("Could not remove reaction because {:?}", reason);
 				};
 			}
 		}
@@ -117,7 +117,7 @@ impl ConnectFourDiscord {
 			// Add one-at-a-time to ensure they are added in order
 			match message.react(&ctx.http, reaction).await {
 				Ok(reaction) => reaction_cache.push(reaction),
-				Err(reason) => println!("Could not react because {:?}", reason),
+				Err(reason) => log::debug!("Could not react because {:?}", reason),
 			}
 		}
 	}
@@ -133,7 +133,7 @@ impl ConnectFourDiscord {
 		let say = Self::get_render_string(game);
 
 		if let Err(reason) = message.edit(&ctx.http, |builder| builder.content(say)).await {
-			println!("Could not edit message because {:?}", reason);
+			log::debug!("Could not edit message because {:?}", reason);
 		}
 	}
 	async fn delete_reactions(reactions: &mut Vec<Reaction>, ctx: &Context) {

@@ -1,7 +1,9 @@
 use std::env;
 use std::fs;
 
+use log::LevelFilter;
 use serenity::prelude::*;
+use simple_logger::SimpleLogger;
 use tokio::runtime::Builder;
 
 use rusther::Arbiter;
@@ -10,6 +12,15 @@ mod rusther;
 mod commands;
 
 fn main() -> Result<(), String> {
+	SimpleLogger::new()
+		.with_colors(true)
+		.with_local_timestamps()
+		.with_level(LevelFilter::Off)
+		.env()  // Must appear after .with_level() to take effect; enables RUST_LOG environment var
+		.with_module_level("rusther", LevelFilter::Info)
+		.init()
+		.unwrap();
+
 	let mut arbiter = Arbiter::new();
 
 	arbiter.register_event_handler("ping", Box::new(commands::Ping::new()))?;
@@ -30,7 +41,7 @@ fn main() -> Result<(), String> {
 			.expect("Could not create client!");
 
 		if let Err(reason) = client.start().await {
-			println!("Client failed with: {:?}", reason);
+			log::debug!("Client failed with: {:?}", reason);
 		}
 	});
 

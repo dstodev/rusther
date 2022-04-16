@@ -21,12 +21,12 @@ use crate::rusther::EventSubHandler;
 
 type CommandHandler = Box<dyn EventSubHandler>;
 
-struct State {
+struct InstanceState {
 	commands: HashMap<&'static str, CommandHandler>,
 	user_id: UserId,
 }
 
-impl State {
+impl InstanceState {
 	fn new() -> Self {
 		Self {
 			commands: HashMap::new(),
@@ -38,14 +38,14 @@ impl State {
 // Real recipient
 pub struct Arbiter {
 	command_prefix: char,
-	state: Arc<Mutex<State>>,
+	state: Arc<Mutex<InstanceState>>,
 }
 
 impl Arbiter {
 	pub fn new() -> Self {
 		Self {
 			command_prefix: '!',
-			state: Arc::new(Mutex::new(State::new())),
+			state: Arc::new(Mutex::new(InstanceState::new())),
 
 		}
 	}
@@ -57,77 +57,76 @@ impl Arbiter {
 		}
 		Ok(())
 	}
+	fn sanitize(content: String) -> String {
+		let mut result = content;
+
+		// Strip the command prefix from the message
+		result.remove(0);
+
+		result
+	}
 }
 
 #[async_trait]
 impl EventHandler for Arbiter {
-	async fn message(&self, ctx: Context, msg: Message) {
+	async fn message(&self, ctx: Context, mut msg: Message) {
 		let mut state = self.state.lock().await;
 
 		if msg.author.id == state.user_id {
-			println!("Skipping own message");
+			log::trace!("Skipping own message");
 			return;
 		}
 		if msg.content.starts_with(self.command_prefix) {
-			// Strip the command prefix from the message
-			let mut message = msg;
-			message.content.remove(0);
+			msg.content = Self::sanitize(msg.content);
 
-			let mut futures = Vec::new();
-
-			for (_name, handler) in state.commands.iter_mut() {
-				futures.push(handler.message(&ctx, &message))
-			}
-			join_all(futures).await;
+			join_all(state
+				.commands
+				.values_mut()
+				.map(|handler| handler.message(&ctx, &msg))
+			).await;
 		}
 	}
-
 	async fn message_update(&self, ctx: Context, _old_if_available: Option<Message>, _new: Option<Message>, event: MessageUpdateEvent) {
 		let mut state = self.state.lock().await;
 
 		if let Some(user) = &event.author {
 			if user.id == state.user_id {
-				println!("Skipping own message_update");
+				log::trace!("Skipping own message_update");
 				return;
 			}
 		}
-		let mut futures = Vec::new();
-
-		for (_name, handler) in state.commands.iter_mut() {
-			futures.push(handler.message_update(&ctx, &event));
-		}
-		join_all(futures).await;
+		join_all(state
+			.commands
+			.values_mut()
+			.map(|handler| handler.message_update(&ctx, &event))
+		).await;
 	}
-
 	async fn reaction_add(&self, ctx: Context, add_reaction: Reaction) {
 		let mut state = self.state.lock().await;
 
 		if let Ok(user) = add_reaction.user(&ctx.http).await {
 			if user.id == state.user_id {
-				println!("Skipping own reaction_add");
+				log::trace!("Skipping own reaction_add");
 				return;
 			}
 		}
-		let mut futures = Vec::new();
-
-		for (_name, handler) in state.commands.iter_mut() {
-			futures.push(handler.reaction_add(&ctx, &add_reaction));
-		}
-		join_all(futures).await;
+		join_all(state
+			.commands
+			.values_mut()
+			.map(|handler| handler.reaction_add(&ctx, &add_reaction))
+		).await;
 	}
-
 	async fn ready(&self, ctx: Context, ready: Ready) {
 		// This function should remain the simplest event forwarder, as example.
 		let mut state = self.state.lock().await;
 
 		state.user_id = ready.user.id;  // Store bot instance's id for later comparisons
 
-		let mut futures = Vec::new();
-
-		for (_name, handler) in state.commands.iter_mut() {
-			futures.push(handler.ready(&ctx, &ready));
-		}
-		join_all(futures).await;
+		join_all(state
+			.commands
+			.values_mut()
+			.map(|handler| handler.ready(&ctx, &ready))
+		).await;
 	}
 }
 
@@ -162,5 +161,12 @@ mod tests {
 		let recipient = Box::new(UnitRecipient);
 		let result = arbiter.register_event_handler("test", recipient);
 		assert!(result.is_err());
+	}
+
+	#[test]
+	fn sanitize_simple_message() {
+		let input = "!lorem ipsum".to_string();
+		let actual = Arbiter::sanitize(input);
+		assert_eq!("lorem ipsum", &actual);
 	}
 }
