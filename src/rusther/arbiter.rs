@@ -93,8 +93,8 @@ impl EventHandler for Arbiter {
 		}
 	}
 	async fn message_update(&self, ctx: Context, _old_if_available: Option<Message>, _new: Option<Message>, event: MessageUpdateEvent) {
-		// This is the simpler form of acquiring the state,
-		// and it is used when tasks are not given the state.
+		// This is a simpler form of acquiring the state,
+		// and it should be used when tasks are not given the state.
 		let state = self.state.lock().await;
 
 		// This kind of setup does not need to be awaited, so no need for a wrapper task.
@@ -115,14 +115,16 @@ impl EventHandler for Arbiter {
 		}
 	}
 	async fn reaction_add(&self, ctx: Context, add_reaction: Reaction) {
-		// .clone().lock_owned() must be used when the setup takes time, e.g. waiting for
+		//   .clone().lock_owned() should be used when the setup takes time, e.g. waiting for
 		// a reference to a user; when the role of dispatching tasks becomes a task in itself.
 		// This is because it allows the state pointer to be moved to a task.
+		//   self.state is an Arc<>, so cloning it is not "cloning" the context, per-se. Instead,
+		// it is cloning the pointer to the state, which is locked behind a mutex.
 		let state = self.state.clone().lock_owned().await;
 
 		tokio::spawn(async move {
 			if let Some(user_id) = add_reaction.user_id {
-				if user_id == ctx.cache.current_user().await.id {
+				if user_id == ctx.cache.current_user_id().await {
 					log::trace!("Skipping own reaction_add");
 					return;
 				}
@@ -140,9 +142,6 @@ impl EventHandler for Arbiter {
 	}
 	async fn ready(&self, ctx: Context, ready: Ready) {
 		// This function should remain the simplest event forwarder, as example.
-
-		// self.state is an Arc<>, so cloning it is not "cloning" the context, per-se. Instead,
-		// it is cloning the pointer to the state, which is locked behind a mutex.
 		let mut state = self.state.lock().await;
 
 		state.user_id = ready.user.id;  // Store bot instance's id for later comparisons
