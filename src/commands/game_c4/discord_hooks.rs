@@ -147,6 +147,13 @@ impl ConnectFourDiscord {
 			log::debug!("Could not edit message because {:?}", reason);
 		}
 	}
+	fn get_render_string(game: &ConnectFour) -> String {
+		format!("> {}{}{}",
+		        Self::get_header_string(game),
+		        Self::get_board_string(game),
+		        Self::get_axis_string(game),
+		)
+	}
 	async fn delete_reactions(reactions: Vec<Reaction>, ctx: &Context) {
 		let http = ctx.http.clone();
 
@@ -156,13 +163,6 @@ impl ConnectFourDiscord {
 				yield_now().await;
 			}
 		});
-	}
-	fn get_render_string(game: &ConnectFour) -> String {
-		format!("{}{}{}",
-		        Self::get_header_string(game),
-		        Self::get_board_string(game),
-		        Self::get_axis_string(game),
-		)
 	}
 	fn get_header_string(game: &ConnectFour) -> String {
 		if game.state == GameState::Playing {

@@ -17,7 +17,7 @@ fn main() -> Result<(), String> {
 		.with_local_timestamps()
 		.with_level(LevelFilter::Off)
 		.env()  // Must appear after .with_level() to take effect; enables RUST_LOG environment var
-		.with_module_level("rusther", LevelFilter::Trace)
+		.with_module_level("rusther", LevelFilter::Info)
 		.init()
 		.unwrap();
 
