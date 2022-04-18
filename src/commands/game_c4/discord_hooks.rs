@@ -148,7 +148,7 @@ impl ConnectFourDiscord {
 		}
 	}
 	fn get_render_string(game: &ConnectFour) -> String {
-		format!("> {}{}{}",
+		format!("{}{}{}",
 		        Self::get_header_string(game),
 		        Self::get_board_string(game),
 		        Self::get_axis_string(game),
@@ -165,13 +165,13 @@ impl ConnectFourDiscord {
 		});
 	}
 	fn get_header_string(game: &ConnectFour) -> String {
-		if game.state == GameState::Playing {
+		return if game.state == GameState::Playing {
 			let player = Some(game.turn);
-			return format!("Current turn: {}\n", Self::get_player_label(player));
+			format!("> Current turn: {}\n", Self::get_player_label(player))
 		} else {
 			let player = game.get_winner();
-			return format!("{} player wins!\n", Self::get_player_label(player));
-		}
+			format!("> {} player wins!\n", Self::get_player_label(player))
+		};
 	}
 	fn get_board_string(game: &ConnectFour) -> String {
 		let mut board = String::new();
