@@ -1,7 +1,9 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use serenity::{
 	async_trait,
+	http::Http,
 	model::{
 		channel::{
 			Message,
@@ -12,7 +14,6 @@ use serenity::{
 	},
 	prelude::*,
 };
-use tokio::task::yield_now;
 
 use crate::{
 	commands::game_c4::c4::{
@@ -23,6 +24,7 @@ use crate::{
 	rusther::EventSubHandler,
 };
 
+#[derive(Debug)]
 struct ConnectFourContext {
 	game: ConnectFour,
 	message: Message,
@@ -39,84 +41,75 @@ impl ConnectFourContext {
 	}
 }
 
-pub struct ConnectFourDiscord {
-	games: HashMap<MessageId, ConnectFourContext>,
-}
+impl ConnectFourContext {
+	async fn render(&mut self, http: &Arc<Http>) {
+		let say = self.get_render_string();
+		let message = &mut self.message;
 
-impl ConnectFourDiscord {
-	pub fn new() -> Self {
-		Self {
-			games: HashMap::new(),
+		if let Err(reason) = message.edit(http, |builder| builder.content(say)).await {
+			log::debug!("Could not edit message because {:?}", reason);
 		}
 	}
-}
-
-#[async_trait]
-impl EventSubHandler for ConnectFourDiscord {
-	async fn message(&mut self, ctx: &Context, new_message: &Message) {
-		let message = &new_message.content;
-
-		if message.as_str() == "c4 start" {
-			let game = ConnectFour::new(7, 6);
-			let say = Self::get_render_string(&game);
-
-			if let Ok(message) = new_message.channel_id.say(&ctx.http, say).await {
-				let id = message.id;
-				let context = ConnectFourContext::new(game, message);
-
-				if self.games.insert(id, context).is_some() {
-					log::debug!("C4 hashmap key collision!");
-				}
-				if let Some(context) = self.games.get_mut(&id) {
-					let reaction_cache = &mut context.reactions;
-					let width = context.game.board.width();
-					Self::add_reactions_to(&context.message, reaction_cache, width, ctx).await;
-				}
-			}
-		} else if message.as_str() == "c4 purge" {
-			let map = Vec::from_iter(self.games.drain());
-
-			for (_id, context) in map {
-				Self::finalize_game(context, ctx).await;
-			}
+	async fn delete_reactions(&mut self, http: &Arc<Http>) {
+		for reaction in self.reactions.drain(..) {
+			let _ = reaction.delete(http).await;
 		}
 	}
-	async fn reaction_add(&mut self, ctx: &Context, add_reaction: &Reaction) {
-		let id = add_reaction.message_id;
-
-		if let Some(context) = self.games.get_mut(&id) {
-			let game = &mut context.game;
-			let reaction_unicode = &add_reaction.emoji.as_data();
-
-			let should_respond = game.state == GameState::Playing
-				&& reaction_unicode.ends_with("\u{fe0f}\u{20e3}");
-
-			if should_respond {
-				let column = reaction_unicode.as_bytes()[0] - 0x30;
-
-				if game.emplace(column.into()) {
-					if game.state == GameState::Playing {
-						let message = &mut context.message;
-						Self::render_to_message(game, message, ctx).await;
-					} else if let Some(context) = self.games.remove(&id) {  // The game has ended, remove it from memory.
-						Self::finalize_game(context, ctx).await;
-					}
-				}
-				if let Err(reason) = add_reaction.delete(&ctx.http).await {
-					log::debug!("Could not remove reaction because {:?}", reason);
-				};
-			}
-		}
+	fn get_render_string(&self) -> String {
+		format!("{}{}{}",
+		        self.get_header_string(),
+		        self.get_board_string(),
+		        self.get_axis_string(),
+		)
 	}
-}
+	fn get_header_string(&self) -> String {
+		let game = &self.game;
 
-impl ConnectFourDiscord {
-	async fn add_reactions_to(message: &Message, reaction_cache: &mut Vec<Reaction>, width: i32, ctx: &Context) {
+		return if game.state == GameState::Playing {
+			let player = Some(game.turn);
+			format!("> Current turn: {}\n", Self::get_player_label(player))
+		} else {
+			let player = game.get_winner();
+			format!("> {} player wins!\n", Self::get_player_label(player))
+		};
+	}
+	fn get_axis_string(&self) -> String {
+		let game = &self.game;
+		let mut axis = String::new();
+
+		if game.state == GameState::Playing {
+			for column in 0..game.board.width() {
+				axis += &Self::get_reaction_string_for_column(column);
+				axis += " ";
+			}
+			axis += "\n";
+		}
+		axis
+	}
+	fn get_board_string(&self) -> String {
+		let game = &self.game;
+		let mut board = String::new();
+
+		for row in 0..game.board.height() {
+			for column in 0..game.board.width() {
+				let player = game.board.get(row, column).cloned();
+				board += Self::get_player_token(player);
+				board += " ";
+			}
+			board += "\n";
+		}
+		board
+	}
+	async fn add_reactions(&mut self, http: &Arc<Http>) {
+		let width = self.game.board.width();
+		let message = &self.message;
+		let reaction_cache = &mut self.reactions;
+
 		for column in 0..width {
 			let reaction = Self::get_reaction_for_column(column);
 
 			// Add one-at-a-time to ensure they are added in order
-			match message.react(&ctx.http, reaction).await {
+			match message.react(http, reaction).await {
 				Ok(reaction) => reaction_cache.push(reaction),
 				Err(reason) => log::debug!("Could not react because {:?}", reason),
 			}
@@ -132,59 +125,13 @@ impl ConnectFourDiscord {
 		// see: https://unicode.org/emoji/charts-12.0/full-emoji-list.html#0030_fe0f_20e3
 		format!("{}\u{fe0f}\u{20e3}", column)
 	}
-	async fn finalize_game(mut context: ConnectFourContext, ctx: &Context) {
+	async fn finalize(&mut self, http: &Arc<Http>) {
 		// If a player has won, do not override the game state to closed i.e. 'draw'.
-		if context.game.state == GameState::Playing {
-			context.game.state = GameState::Closed;
+		if self.game.state == GameState::Playing {
+			self.game.state = GameState::Closed;
 		}
-		Self::render_to_message(&context.game, &mut context.message, ctx).await;
-		Self::delete_reactions(context.reactions, ctx).await;
-	}
-	async fn render_to_message(game: &ConnectFour, message: &mut Message, ctx: &Context) {
-		let say = Self::get_render_string(game);
-
-		if let Err(reason) = message.edit(&ctx.http, |builder| builder.content(say)).await {
-			log::debug!("Could not edit message because {:?}", reason);
-		}
-	}
-	fn get_render_string(game: &ConnectFour) -> String {
-		format!("{}{}{}",
-		        Self::get_header_string(game),
-		        Self::get_board_string(game),
-		        Self::get_axis_string(game),
-		)
-	}
-	async fn delete_reactions(reactions: Vec<Reaction>, ctx: &Context) {
-		let http = ctx.http.clone();
-
-		tokio::spawn(async move {
-			for reaction in reactions {
-				let _ = reaction.delete(http.clone()).await;
-				yield_now().await;
-			}
-		});
-	}
-	fn get_header_string(game: &ConnectFour) -> String {
-		return if game.state == GameState::Playing {
-			let player = Some(game.turn);
-			format!("> Current turn: {}\n", Self::get_player_label(player))
-		} else {
-			let player = game.get_winner();
-			format!("> {} player wins!\n", Self::get_player_label(player))
-		};
-	}
-	fn get_board_string(game: &ConnectFour) -> String {
-		let mut board = String::new();
-
-		for row in 0..game.board.height() {
-			for column in 0..game.board.width() {
-				let player = game.board.get(row, column).cloned();
-				board += Self::get_player_token(player);
-				board += " ";
-			}
-			board += "\n";
-		}
-		board
+		self.render(http).await;
+		self.delete_reactions(http).await;
 	}
 	fn get_player_label(player: Option<Player>) -> String {
 		format!("{} {}", Self::get_player_token(player), match player {
@@ -200,16 +147,98 @@ impl ConnectFourDiscord {
 			None => ":black_circle:",
 		}
 	}
-	fn get_axis_string(game: &ConnectFour) -> String {
-		let mut axis = String::new();
+}
 
-		if game.state == GameState::Playing {
-			for column in 0..game.board.width() {
-				axis += &Self::get_reaction_string_for_column(column);
-				axis += " ";
-			}
-			axis += "\n";
+pub struct ConnectFourDiscord {
+	games: HashMap<MessageId, Arc<Mutex<ConnectFourContext>>>,
+}
+
+impl ConnectFourDiscord {
+	pub fn new() -> Self {
+		Self {
+			games: HashMap::new(),
 		}
-		axis
+	}
+}
+
+#[async_trait]
+impl EventSubHandler for ConnectFourDiscord {
+	async fn message(&mut self, ctx: Arc<Context>, new_message: Arc<Message>) {
+		let message = &new_message.content;
+
+		match message.as_str() {
+			"c4 start" => {
+				let say = ":anchor:";
+
+				match new_message.channel_id.say(&ctx.http, say).await {
+					Ok(message) => {
+						let id = message.id;
+						let game = ConnectFour::new(7, 6);
+						let context = ConnectFourContext::new(game, message);
+
+						if self.games.insert(id, Arc::new(Mutex::new(context))).is_some() {
+							log::debug!("C4 hashmap key collision!");
+						}
+						if let Some(mutex) = self.games.get(&id).cloned() {
+							let mut context = mutex.lock().await;
+							context.render(&ctx.http).await;
+							context.add_reactions(&ctx.http).await;
+						}
+					}
+					Err(reason) => log::debug!("C4 could not send anchor message because {:?}", reason),
+				}
+			}
+			"c4 purge" => {
+				for (_id, mutex) in self.games.drain() {
+					let http = ctx.http.clone();
+
+					tokio::spawn(async move {
+						let mut instance = mutex.lock().await;
+						instance.finalize(&http).await;
+					});
+				}
+			}
+			_ => {}
+		}
+	}
+	async fn reaction_add(&mut self, ctx: Arc<Context>, add_reaction: Arc<Reaction>) {
+		let id = add_reaction.message_id;
+		let mut game_has_ended: bool = false;
+
+		if let Some(mutex) = self.games.get(&id).cloned() {
+			let reaction_unicode = add_reaction.emoji.as_data();
+			let sub_http = ctx.http.clone();
+
+			tokio::spawn(async move {
+				if let Err(reason) = add_reaction.delete(&sub_http).await {
+					log::debug!("Could not remove reaction because {:?}", reason);
+				};
+			});
+
+			let mut instance = mutex.lock().await;
+			let game = &mut instance.game;
+
+			let should_respond = game.state == GameState::Playing
+				&& reaction_unicode.ends_with("\u{fe0f}\u{20e3}");
+
+			if should_respond {
+				let column = reaction_unicode.as_bytes()[0] - 0x30;
+
+				if game.emplace(column.into()) {
+					if game.state == GameState::Playing {
+						instance.render(&ctx.http).await;
+					} else {
+						game_has_ended = true;
+					}
+				}
+			}
+		}
+		if game_has_ended {
+			// The game has ended, remove it from memory.
+			if let Some(mutex) = self.games.remove(&id) {
+				let mut instance = mutex.lock().await;
+				instance.finalize(&ctx.http).await;
+			}
+		}
 	}
 }

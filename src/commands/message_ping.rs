@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use serenity::{
 	async_trait,
 	model::channel::Message,
@@ -20,13 +22,13 @@ impl Ping {
 
 #[async_trait]
 impl EventSubHandler for Ping {
-	async fn message(&mut self, ctx: &Context, msg: &Message) {
+	async fn message(&mut self, ctx: Arc<Context>, msg: Arc<Message>) {
 		match msg.content.as_str() {
 			"ping" | "hello" | "welcome" => {
 				self.value += 1;
-				let message = format!("Welcome #{}!", self.value);
+				let say = format!("Welcome #{}!", self.value);
 
-				if let Err(reason) = msg.channel_id.say(&ctx.http, message).await {
+				if let Err(reason) = msg.channel_id.say(&ctx.http, say).await {
 					log::debug!("Could not send message because {}", reason);
 				}
 			}

@@ -29,6 +29,7 @@ impl<T> Token<T> {
 	}
 }
 
+#[derive(Debug)]
 pub struct Board<T> {
 	width: i32,
 	height: i32,

@@ -37,6 +37,7 @@ pub enum GameState {
 	Won { player: Player },
 }
 
+#[derive(Debug)]
 pub struct ConnectFour {
 	pub turn: Player,
 	pub state: GameState,
