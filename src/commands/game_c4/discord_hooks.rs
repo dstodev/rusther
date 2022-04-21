@@ -52,7 +52,7 @@ impl ConnectFourContext {
 	}
 	async fn delete_reactions(&mut self, http: &Arc<Http>) {
 		for reaction in self.reactions.drain(..) {
-			let _ = reaction.delete(http).await;
+			let _ = reaction.delete_all(http).await;
 		}
 	}
 	fn get_render_string(&self) -> String {
@@ -209,12 +209,6 @@ impl EventSubHandler for ConnectFourDiscord {
 			let reaction_unicode = add_reaction.emoji.as_data();
 			let sub_http = ctx.http.clone();
 
-			tokio::spawn(async move {
-				if let Err(reason) = add_reaction.delete(&sub_http).await {
-					log::debug!("Could not remove reaction because {:?}", reason);
-				};
-			});
-
 			/* .lock_owned() should be used when the state pointer is to be moved to another task.
 			     However, even though the state pointer is moved to a separate task, the state is
 			     still locked, so sub-tasks should remain minimal.
@@ -226,6 +220,12 @@ impl EventSubHandler for ConnectFourDiscord {
 				&& reaction_unicode.ends_with("\u{fe0f}\u{20e3}");
 
 			if should_respond {
+				tokio::spawn(async move {
+					if let Err(reason) = add_reaction.delete(&sub_http).await {
+						log::debug!("Could not remove reaction because {:?}", reason);
+					};
+				});
+
 				let column = reaction_unicode.as_bytes()[0] - 0x30;
 
 				if game.emplace(column.into()) && game.state != GameState::Playing {
