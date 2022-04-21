@@ -17,11 +17,13 @@ fn main() -> Result<(), String> {
 		.with_local_timestamps()
 		.with_level(LevelFilter::Off)
 		.env()  // Must appear after .with_level() to take effect; enables RUST_LOG environment var
-		.with_module_level("rusther", LevelFilter::Info)
+		.with_module_level("rusther", LevelFilter::Debug)
 		.init()
 		.unwrap();
 
-	log::trace!("Logger initialized");
+	log::info!("Logger initialized");
+	log::debug!("  With debug messages");
+	log::trace!("  With trace messages");
 
 	let mut arbiter = Arbiter::new();
 
