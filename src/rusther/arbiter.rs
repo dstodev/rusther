@@ -70,20 +70,24 @@ impl Arbiter {
 #[async_trait]
 impl EventHandler for Arbiter {
 	async fn message(&self, ctx: Context, mut msg: Message) {
-		let state = self.state.lock().await;
-		let prefix = self.command_prefix;
-
-		if msg.author.id == state.user_id {
+		if msg.author.id == ctx.cache.current_user_id().await {
 			log::trace!("Skipping own message");
 			return;
 		}
+		let prefix = self.command_prefix;
+
 		if msg.content.starts_with(prefix) {
 			msg.content = Self::sanitize(msg.content);
 
 			let safe_ctx = Arc::new(ctx);
 			let safe_msg = Arc::new(msg);
 
-			for handler in state.commands.values().cloned() {
+			let handlers;
+			{
+				let state = self.state.lock().await;
+				handlers = Vec::from_iter(state.commands.values().cloned());
+			}
+			for handler in handlers {
 				let sub_ctx = safe_ctx.clone();
 				let sub_msg = safe_msg.clone();
 
@@ -95,13 +99,8 @@ impl EventHandler for Arbiter {
 		}
 	}
 	async fn message_update(&self, ctx: Context, _old_if_available: Option<Message>, _new: Option<Message>, event: MessageUpdateEvent) {
-		// This is a simpler form of acquiring the state,
-		// and it should be used when further tasks are not given the state.
-		let state = self.state.lock().await;
-
-		// This kind of setup does not need to be awaited, so no need for a wrapper task.
 		if let Some(user) = &event.author {
-			if user.id == state.user_id {
+			if user.id == ctx.cache.current_user_id().await {
 				log::trace!("Skipping own message_update");
 				return;
 			}
@@ -109,7 +108,12 @@ impl EventHandler for Arbiter {
 		let safe_ctx = Arc::new(ctx);
 		let safe_event = Arc::new(event);
 
-		for handler in state.commands.values().cloned() {
+		let handlers;
+		{
+			let state = self.state.lock().await;
+			handlers = Vec::from_iter(state.commands.values().cloned());
+		}
+		for handler in handlers {
 			let sub_ctx = safe_ctx.clone();
 			let sub_event = safe_event.clone();
 
@@ -120,26 +124,33 @@ impl EventHandler for Arbiter {
 		}
 	}
 	async fn reaction_add(&self, ctx: Context, add_reaction: Reaction) {
-		/* .clone().lock_owned() should be used when the setup takes time, e.g. waiting for
-		   a reference to a user; when the role of dispatching tasks becomes a task in itself.
-		   This is because it allows the state pointer to be moved to a task.
-
-		   self.state is an Arc<>, so cloning it is not "cloning" the context, per-se. Instead,
-		   it is cloning the pointer to the state, which is locked behind a mutex.
-		*/
-		let state = self.state.clone().lock_owned().await;
-
-		let safe_ctx = Arc::new(ctx);
-		let safe_add_reaction = Arc::new(add_reaction);
+		/* self.state is an Arc<>, so cloning it is not "cloning" the context, per-se. Instead,
+		   it is cloning the pointer to the state, which is locked behind a mutex. */
+		let state = self.state.clone();
 
 		tokio::spawn(async move {
+			let safe_ctx = Arc::new(ctx);
+			let safe_add_reaction = Arc::new(add_reaction);
+
 			if let Some(user_id) = safe_add_reaction.user_id {
 				if user_id == safe_ctx.cache.current_user_id().await {
 					log::trace!("Skipping own reaction_add");
 					return;
 				}
 			}
-			for handler in state.commands.values().cloned() {
+
+			let handlers;
+			{
+				/* .clone().lock_owned() should be used when the setup takes time, e.g. waiting for
+				   a reference to a user; when the role of dispatching tasks becomes a task in itself.
+
+				   This is because it allows the state pointer to be moved to a task. However, even though
+				   the state pointer is moved to a separate task, the state is still locked, so sub-tasks
+				   should remain minimal. */
+				let instance = state.lock().await;
+				handlers = Vec::from_iter(instance.commands.values().cloned());
+			}
+			for handler in handlers {
 				let sub_ctx = safe_ctx.clone();
 				let sub_add_reaction = safe_add_reaction.clone();
 
@@ -152,16 +163,21 @@ impl EventHandler for Arbiter {
 	}
 	async fn ready(&self, ctx: Context, ready: Ready) {
 		// This function should remain the simplest event forwarder, as example.
-		let mut state = self.state.lock().await;
 
-		state.user_id = ready.user.id;  // Store bot instance's id for later comparisons
-
-		// Wrap inputs--pointer clones will be moved to further tasks.
+		// Wrap inputs--Arc<> clones will be moved to child tasks.
 		let safe_ctx = Arc::new(ctx);
 		let safe_ready = Arc::new(ready);
 
+		let handlers;
+		{
+			// Access to the state is kept minimal, with mutexes being unlocked (e.g. dropped
+			// from scope) as soon as possible.
+			let mut state = self.state.lock().await;
+			state.user_id = safe_ready.user.id;  // Store bot instance's id for later comparisons
+			handlers = Vec::from_iter(state.commands.values().cloned());
+		}
 		// Spawn a task for each sub-handler.
-		for handler in state.commands.values().cloned() {
+		for handler in handlers {
 			let sub_ctx = safe_ctx.clone();
 			let sub_ready = safe_ready.clone();
 

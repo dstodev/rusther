@@ -73,6 +73,20 @@ impl ConnectFourContext {
 			format!("> {} player wins!\n", Self::get_player_label(player))
 		};
 	}
+	fn get_player_label(player: Option<Player>) -> String {
+		format!("{} {}", Self::get_player_token(player), match player {
+			Some(Player::Red) => "Red",
+			Some(Player::Blue) => "Blue",
+			None => "No",
+		})
+	}
+	fn get_player_token(player: Option<Player>) -> &'static str {
+		match player {
+			Some(Player::Red) => ":red_circle:",
+			Some(Player::Blue) => ":blue_circle:",
+			None => ":black_circle:",
+		}
+	}
 	fn get_axis_string(&self) -> String {
 		let game = &self.game;
 		let mut axis = String::new();
@@ -132,20 +146,6 @@ impl ConnectFourContext {
 		}
 		self.render(http).await;
 		self.delete_reactions(http).await;
-	}
-	fn get_player_label(player: Option<Player>) -> String {
-		format!("{} {}", Self::get_player_token(player), match player {
-			Some(Player::Red) => "Red",
-			Some(Player::Blue) => "Blue",
-			None => "No",
-		})
-	}
-	fn get_player_token(player: Option<Player>) -> &'static str {
-		match player {
-			Some(Player::Red) => ":red_circle:",
-			Some(Player::Blue) => ":blue_circle:",
-			None => ":black_circle:",
-		}
 	}
 }
 
@@ -215,7 +215,7 @@ impl EventSubHandler for ConnectFourDiscord {
 				};
 			});
 
-			let mut instance = mutex.lock().await;
+			let mut instance = mutex.lock_owned().await;
 			let game = &mut instance.game;
 
 			let should_respond = game.state == GameState::Playing
@@ -224,18 +224,23 @@ impl EventSubHandler for ConnectFourDiscord {
 			if should_respond {
 				let column = reaction_unicode.as_bytes()[0] - 0x30;
 
-				if game.emplace(column.into()) {
-					if game.state == GameState::Playing {
-						instance.render(&ctx.http).await;
-					} else {
-						game_has_ended = true;
-					}
+				if game.emplace(column.into()) && game.state != GameState::Playing {
+					// Signal that the game has ended, ...
+					game_has_ended = true;
 				}
+				let http = ctx.http.clone();
+				tokio::spawn(async move {
+					instance.render(&http).await;
+					// ... and release the instance lock.
+				});
 			}
 		}
 		if game_has_ended {
-			// The game has ended, remove it from memory.
-			if let Some(mutex) = self.games.remove(&id) {
+			/* TODO: Figure out when to remove games.
+				If we use self.games.remove() here, there is no guarantee other tasks have
+				all completed, which may want to use the instance context. */
+
+			if let Some(mutex) = self.games.get(&id) {
 				let mut instance = mutex.lock().await;
 				instance.finalize(&ctx.http).await;
 			}
