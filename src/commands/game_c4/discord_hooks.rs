@@ -177,7 +177,7 @@ impl EventSubHandler for ConnectFourDiscord {
 						let context = ConnectFourContext::new(game, message);
 
 						if self.games.insert(id, Arc::new(Mutex::new(context))).is_some() {
-							log::debug!("C4 hashmap key collision!");
+							log::debug!("Hashmap key collision!");
 						}
 						if let Some(mutex) = self.games.get(&id).cloned() {
 							let mut context = mutex.lock().await;
@@ -185,7 +185,7 @@ impl EventSubHandler for ConnectFourDiscord {
 							context.add_reactions(&ctx.http).await;
 						}
 					}
-					Err(reason) => log::debug!("C4 could not send anchor message because {:?}", reason),
+					Err(reason) => log::debug!("Could not send anchor message because {:?}", reason),
 				}
 			}
 			"c4 purge" => {
@@ -215,6 +215,10 @@ impl EventSubHandler for ConnectFourDiscord {
 				};
 			});
 
+			/* .lock_owned() should be used when the state pointer is to be moved to another task.
+			     However, even though the state pointer is moved to a separate task, the state is
+			     still locked, so sub-tasks should remain minimal.
+		    */
 			let mut instance = mutex.lock_owned().await;
 			let game = &mut instance.game;
 
@@ -230,15 +234,20 @@ impl EventSubHandler for ConnectFourDiscord {
 				}
 				let http = ctx.http.clone();
 				tokio::spawn(async move {
+					/* TODO: How can we drop intermediate render requests, given a user provides
+					         many simultaneous reactions?
+					 */
 					instance.render(&http).await;
-					// ... and release the instance lock.
 				});
 			}
+			// ... and release the instance lock.
 		}
 		if game_has_ended {
 			/* TODO: Figure out when to remove games.
-				If we use self.games.remove() here, there is no guarantee other tasks have
-				all completed, which may want to use the instance context. */
+			         If we use self.games.remove() here, there is no guarantee other tasks have
+			         all completed, which may want to use the instance context. */
+
+			log::info!("Game {} concluded!", id);
 
 			if let Some(mutex) = self.games.get(&id) {
 				let mut instance = mutex.lock().await;
