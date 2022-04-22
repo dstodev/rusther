@@ -1,3 +1,5 @@
+#![crate_name = "rusther"]
+
 use std::env;
 use std::fs;
 
@@ -17,7 +19,7 @@ fn main() -> Result<(), String> {
 		.with_local_timestamps()
 		.with_level(LevelFilter::Off)
 		.env()  // Must appear after .with_level() to take effect; enables RUST_LOG environment var
-		.with_module_level("rusther", LevelFilter::Debug)
+		.with_module_level("rusther", LevelFilter::Debug)  // But this line takes ultimate precedence for module-level logging
 		.init()
 		.unwrap();
 
