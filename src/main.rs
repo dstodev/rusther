@@ -40,7 +40,7 @@ fn main() -> Result<(), String> {
 		.build()
 		.unwrap();
 
-	runtime.block_on(async {
+	runtime.block_on(async move {  // or just async (no move)?
 		let mut client = Client::builder(token)
 			.event_handler(arbiter)
 			.await
