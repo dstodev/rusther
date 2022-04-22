@@ -53,7 +53,7 @@ impl ArbiterState {
 /// between events, and over time. This is enabled by providing interior mutability via the
 /// Arc<Mutex<>> type.
 ///
-/// Atomically-reference-counted (ARC) pointer clones for each sub-handlers are distributed to
+/// Atomically-reference-counted (ARC) pointer clones for each sub-handler are distributed to
 /// tasks per event invocation, each pointing to the mutex guarding the event handler. Tasks lock
 /// the sub-handler mutex then execute them, passing above-described clones of inputs as their
 /// like-typed Arc<>s.
