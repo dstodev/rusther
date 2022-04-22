@@ -22,7 +22,7 @@ type CommandHandler = Box<dyn EventSubHandler>;
 
 /// The shared state of the Arbiter.
 /// It is defined separately than inside Arbiter; instead there, it is wrapped inside an Arc<Mutex<>>.
-/// Moving the important state types out here is easier for me to conceptualize.
+/// Moving the important state types out here is easier for me to understand.
 struct ArbiterState {
 	commands: HashMap<&'static str, Arc<Mutex<CommandHandler>>>,
 	user_id: UserId,
