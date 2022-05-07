@@ -10,8 +10,9 @@ use tokio::runtime::Builder;
 
 use rusther::Arbiter;
 
-mod rusther;
 mod commands;
+mod rusther;
+mod utility;
 
 fn main() -> Result<(), String> {
 	SimpleLogger::new()

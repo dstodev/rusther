@@ -9,8 +9,8 @@ use serenity::{
 	async_trait,
 	model::{
 		channel::Message,
-		event::MessageUpdateEvent,
 		channel::Reaction,
+		event::MessageUpdateEvent,
 		gateway::Ready,
 	},
 	prelude::*,
