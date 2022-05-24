@@ -2,21 +2,21 @@ use std::time::{Duration, Instant};
 
 pub struct ScopeTime<'a> {
 	origin: Instant,
-	on_destroy: Box<dyn FnMut(Duration) + 'a>,
+	on_drop: Box<dyn FnMut(Duration) + 'a>,
 }
 
 impl<'a> ScopeTime<'a> {
 	pub fn new(on_destroy: impl FnMut(Duration) + 'a) -> Self {
 		Self {
 			origin: Instant::now(),
-			on_destroy: Box::new(on_destroy),
+			on_drop: Box::new(on_destroy),
 		}
 	}
 }
 
 impl<'a> Drop for ScopeTime<'a> {
 	fn drop(&mut self) {
-		(self.on_destroy)(self.origin.elapsed());
+		(self.on_drop)(self.origin.elapsed());
 	}
 }
 
