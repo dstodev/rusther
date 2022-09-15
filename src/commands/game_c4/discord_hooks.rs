@@ -135,7 +135,7 @@ impl ConnectFourContext {
 		ReactionType::Unicode(triplet)
 	}
 	fn get_reaction_string_for_column(column: i32) -> String {
-		// Using unicode keycap symbols of the form <ascii value for number><unicode fe0f 20e3>,
+		// Using unicode keycap symbols in the form <ascii value for number><unicode fe0f 20e3>,
 		// see: https://unicode.org/emoji/charts-12.0/full-emoji-list.html#0030_fe0f_20e3
 		format!("{}\u{fe0f}\u{20e3}", column)
 	}
@@ -179,7 +179,7 @@ impl EventSubHandler for ConnectFourDiscord {
 						if self.games.insert(id, Arc::new(Mutex::new(context))).is_some() {
 							log::debug!("Hashmap key collision!");
 						}
-						if let Some(mutex) = self.games.get(&id).cloned() {
+						if let Some(mutex) = self.games.get(&id) {
 							let mut context = mutex.lock().await;
 							context.render(&ctx.http).await;
 							context.add_reactions(&ctx.http).await;
@@ -209,9 +209,9 @@ impl EventSubHandler for ConnectFourDiscord {
 			let reaction_unicode = add_reaction.emoji.as_data();
 			let sub_http = ctx.http.clone();
 
-			/* .lock_owned() should be used when the state pointer is to be moved to another task.
-			     However, even though the state pointer is moved to a separate task, the state is
-			     still locked, so sub-tasks should remain minimal.
+			/* .lock_owned() is used when the returned instance is moved to another task.
+			     However, even though it is moved to another task, the state is still locked,
+			     so sub-tasks should remain minimal.
 		    */
 			let mut instance = mutex.lock_owned().await;
 			let game = &mut instance.game;
@@ -247,7 +247,7 @@ impl EventSubHandler for ConnectFourDiscord {
 			         If we use self.games.remove() here, there is no guarantee other tasks have
 			         all completed, which may want to use the instance context. */
 
-			log::info!("Game {} concluded!", id);
+			log::info!("Game {} has concluded!", id);
 
 			if let Some(mutex) = self.games.get(&id) {
 				let mut instance = mutex.lock().await;

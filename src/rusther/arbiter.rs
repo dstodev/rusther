@@ -39,19 +39,19 @@ impl ArbiterState {
 
 /// Arbitrates events to mutable sub-event-handlers.
 ///
-/// Arbiter is the core class which accepts Discord events through the Serenity crate, taking
-/// ownership over event input. It wraps this input in Arc<> types, allowing them to be
-/// immutably referencable by sub-handlers without copying the input.
+/// Arbiter is a core class which accepts Discord events using the Serenity crate. It owns event
+/// input and wraps this input in Arc<> to allow sub-handlers to immutably reference them without
+/// copying them.
 ///
-/// Arbiter has authority over how a Discord event is dispatched to sub-handlers; it moves the
-/// data to fit EventSubHandler trait function definitions, and facilitates this dispatch.
+/// Arbiter has authority over how a Discord event is dispatched to sub-handlers. It moves
+/// data to fit EventSubHandler trait function definitions.
 ///
 /// For every Discord event to be supported, an analogue Arbiter method must exist. Its role
-/// is to dispatch--ideally as individual tasks--each sub-handler, per event invocation.
+/// is to dispatch each sub-handler, ideally as individual tasks.
 ///
-/// A foundational ability of Arbiter is to provide mutability to event sub-handlers, especially
-/// between events, and over time. This is enabled by providing interior mutability via the
-/// Arc<Mutex<>> type.
+/// A foundational ability of Arbiter is to provide mutability to event sub-handlers, which is
+/// especially useful for interactions between events over time.
+/// This works by providing interior mutability via the Arc<Mutex<>> type.
 ///
 /// Atomically-reference-counted (ARC) pointer clones for each sub-handler are distributed to
 /// tasks per event invocation, each pointing to the mutex guarding the event handler. Tasks lock
@@ -59,6 +59,12 @@ impl ArbiterState {
 /// like-typed Arc<>s.
 ///
 /// The ready() function serves as a notable example of implementing one such "event forwarder".
+///
+/// PERFORMANCE WARNING:
+///     All Discord events handled by a CommandHandler are processed by the same instance, locking
+///     it each time. Care should be taken within each handler to return as soon as possible,
+///     with performance-heavy code being spawned in new tasks instead of executing in the handler
+///     itself.
 pub struct Arbiter {
 	command_prefix: char,
 	state: Arc<Mutex<ArbiterState>>,
@@ -71,6 +77,7 @@ impl Arbiter {
 			state: Arc::new(Mutex::new(ArbiterState::new())),
 		}
 	}
+	// TODO: Make providing a name optional
 	pub fn register_event_handler(&mut self, name: &'static str, handler: CommandHandler) -> Result<(), String> {
 		let mut state = self.state.blocking_lock();
 
@@ -173,18 +180,17 @@ impl EventHandler for Arbiter {
 	async fn ready(&self, ctx: Context, ready: Ready) {
 		// This function should remain the simplest event forwarder, as example.
 
-		// Wrap inputs--Arc<> clones will be moved to child tasks.
+		// Clones of these Arc<> will be moved to child tasks.
 		let safe_ctx = Arc::new(ctx);
 		let safe_ready = Arc::new(ready);
 
 		let handlers;
 		{
-			/* self.state is an Arc<>, so cloning it is not cloning the state, per-se. Instead,
-			   it is cloning the pointer to the state, which is additionally locked behind a
-			   mutex.
+			/* self.commands is a list of Arc<>, so cloning it is not cloning the handlers.
+			   Instead, it is cloning pointers to the handlers, which are locked behind mutexes.
 
-			   Access to the state is kept minimal, with mutexes being unlocked (e.g. dropped
-			   from scope) as soon as possible.
+			   Access to the state mutex is kept minimal and it is released as soon as possible
+			   by dropping from scope.
 			*/
 			let mut state = self.state.lock().await;
 			state.user_id = safe_ready.user.id;  // Store bot instance's id for later comparisons

@@ -444,17 +444,17 @@ mod tests {
 	fn test_get_count_in_direction() {
 		let mut cf = ConnectFour::new(7, 6);
 
-		cf.board.set(2, 1, Player::Red);
-		cf.board.set(3, 1, Player::Red);
-		cf.board.set(0, 2, Player::Red);
-		cf.board.set(1, 2, Player::Red);
-		cf.board.set(2, 2, Player::Red);
-		cf.board.set(3, 2, Player::Red);
-		cf.board.set(1, 3, Player::Red);
-		cf.board.set(2, 3, Player::Blue);
-		cf.board.set(3, 3, Player::Blue);
-		cf.board.set(0, 4, Player::Red);
-		cf.board.set(2, 4, Player::Red);
+		cf.board.set(2, 1, Player::Red)
+		  .set(3, 1, Player::Red)
+		  .set(0, 2, Player::Red)
+		  .set(1, 2, Player::Red)
+		  .set(2, 2, Player::Red)
+		  .set(3, 2, Player::Red)
+		  .set(1, 3, Player::Red)
+		  .set(2, 3, Player::Blue)
+		  .set(3, 3, Player::Blue)
+		  .set(0, 4, Player::Red)
+		  .set(2, 4, Player::Red);
 		/*
 			   0 1 2 3 4
 			0  - - R - R

@@ -85,12 +85,15 @@ impl<T> Board<T> {
 	pub fn width(&self) -> i32 {
 		self.width
 	}
+
 	pub fn height(&self) -> i32 {
 		self.height
 	}
+
 	pub fn data(&self) -> &Vec<Option<Token<T>>> {
 		&self.data
 	}
+
 	pub fn get_neighbor(&self, row: i32, column: i32, direction: Direction) -> Option<Token<&T>> {
 		let (row, column) = match direction {
 			// @formatter:off
@@ -109,6 +112,7 @@ impl<T> Board<T> {
 		}
 		None
 	}
+
 	pub fn get(&self, row: i32, column: i32) -> Option<&T> {
 		if let Some(index) = self.index_from_rc(row, column) {
 			if let Some(Some(token)) = self.data.get(index as usize) {
@@ -118,11 +122,14 @@ impl<T> Board<T> {
 		}
 		None
 	}
-	pub fn set(&mut self, row: i32, column: i32, value: T) {
+
+	pub fn set(&mut self, row: i32, column: i32, value: T) -> &mut Self {
 		if let Some(index) = self.index_from_rc(row, column) {
 			self.data[index as usize] = Some(Token::new(row, column, value));
 		}
+		self
 	}
+
 	fn index_from_rc(&self, row: i32, column: i32) -> Option<i32> {
 		if row >= 0 && row < self.height && column >= 0 && column < self.width {
 			let stride = self.width;
@@ -143,33 +150,39 @@ mod tests {
 		assert_eq!(7, board.width());
 		assert_eq!(6, board.height());
 		assert_eq!(7 * 6, board.data().len());
+		assert!(board.data.iter().all(|i| i.is_none()));
 	}
 
 	#[test]
 	fn fill() {
 		let mut board = Board::<i32>::new(7, 6);
-		board.fill(10);
-		assert!(board.data.iter().all(|i| i.as_ref().unwrap().value == 10));
+		board.fill(1);
+		assert!(board.data.iter().all(|i| i.as_ref().unwrap().value == 1));
 	}
 
 	#[test]
-	fn get_once() {
-		let mut board = Board::<i32>::new(7, 6);
-		board.fill(10);
+	fn get_() {
+		let mut board = Board::<i32>::new(1, 1);
+		board.fill(1);
 		let first = board.get(0, 0);
 		assert!(first.is_some());
-		assert_eq!(&10, first.unwrap());
+		assert_eq!(&1, first.unwrap());
 	}
 
 	#[test]
-	fn get_twice() {
-		let mut board = Board::<i32>::new(7, 6);
-		board.fill(10);
-		for _ in 0..2 {
-			let first = board.get(0, 0);
-			assert!(first.is_some());
-			assert_eq!(&10, first.unwrap());
-		}
+	fn set() {
+		let mut board = Board::<i32>::new(1, 1);
+		assert!(board.get(0, 0).is_none());
+		board.set(0, 0, 1);
+		assert_eq!(&1, board.get(0, 0).unwrap());
+	}
+
+	#[test]
+	fn set_chain() {
+		let mut board = Board::<i32>::new(2, 1);
+		board.set(0, 0, 1).set(0, 1, 2);
+		assert_eq!(&1, board.get(0, 0).unwrap());
+		assert_eq!(&2, board.get(0, 1).unwrap());
 	}
 
 	#[test]
