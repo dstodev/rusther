@@ -22,8 +22,9 @@ impl<'a> Drop for ScopeTime<'a> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
 	use tokio::runtime::Builder;
+
+	use super::*;
 
 	#[test]
 	fn test_probe_scope() {
