@@ -1,6 +1,3 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-
 use serenity::{
 	async_trait,
 	http::Http,
@@ -14,6 +11,8 @@ use serenity::{
 	},
 	prelude::*,
 };
+use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::{
 	commands::game_c4::c4::{
@@ -66,21 +65,19 @@ impl ConnectFourContext {
 		let game = &self.game;
 
 		return if game.state == GameState::Playing {
-			let player = Some(game.turn);
-			format!("> Current turn: {}\n", Self::get_player_label(player))
+			format!("> Current turn: {}\n", Self::get_player_label(&Some(game.turn)))
 		} else {
-			let player = game.get_winner();
-			format!("> {} player wins!\n", Self::get_player_label(player))
+			format!("> {} player wins!\n", Self::get_player_label(&game.get_winner()))
 		};
 	}
-	fn get_player_label(player: Option<Player>) -> String {
+	fn get_player_label(player: &Option<Player>) -> String {
 		format!("{} {}", Self::get_player_token(player), match player {
 			Some(Player::Red) => "Red",
 			Some(Player::Blue) => "Blue",
-			None => "No",
+			None => "No",  // becomes e.g. "No player wins!"
 		})
 	}
-	fn get_player_token(player: Option<Player>) -> &'static str {
+	fn get_player_token(player: &Option<Player>) -> &'static str {
 		match player {
 			Some(Player::Red) => ":red_circle:",
 			Some(Player::Blue) => ":blue_circle:",
@@ -106,8 +103,11 @@ impl ConnectFourContext {
 
 		for row in 0..game.board.height() {
 			for column in 0..game.board.width() {
-				let player = game.board.get(row, column).cloned();
-				board += Self::get_player_token(player);
+				let player = match game.board.get(row, column) {
+					Some(v) => Some(v.value),
+					None => None,
+				};
+				board += Self::get_player_token(&player);
 				board += " ";
 			}
 			board += "\n";

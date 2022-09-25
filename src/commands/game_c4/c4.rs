@@ -29,7 +29,6 @@ impl Not for Player {
 	}
 }
 
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum GameState {
 	Closed,
@@ -71,7 +70,7 @@ impl ConnectFour {
 					if let Some(player) = self.get_winner() {
 						//self.board.fill(winner);  // Cool effect, but obscures the winning move
 						self.state = GameState::Won { player };
-					} else if self.board.data().iter().all(|e| e.is_some()) {
+					} else if self.board.data().len() == self.board.width() as usize * self.board.height() as usize {
 						// Board is full, but there are no winners. A draw!
 						self.state = GameState::Closed;
 					}
@@ -115,20 +114,26 @@ impl ConnectFour {
 	fn get_count_in_direction(&self, row: i32, column: i32, direction: Direction) -> i32 {
 		if let Some(lhs) = self.board.get(row, column) {
 			if let Some(rhs) = self.board.get_neighbor(row, column, direction) {
-				if lhs == rhs.value {
+				if lhs.value == rhs.value {
 					return 1 + self.get_count_in_direction(rhs.row, rhs.column, direction);
 				}
 			}
-			1
-		} else {
-			0
+			return 1;
 		}
+		return 0;
 	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use super::super::board::Token;
+
+	impl std::convert::From<&Token<Player>> for Player {
+		fn from(o: &Token<Player>) -> Self {
+			o.value
+		}
+	}
 
 	#[test]
 	fn test_new_default() {
@@ -154,7 +159,7 @@ mod tests {
 			4  - - - - - - -   After placing a marker, the turn should switch to BLUE.
 			5  R - - - - - -
 		*/
-		assert_eq!(Some(&Player::Red), cf.board.get(5, 0));
+		assert_eq!(Player::Red, cf.board.get(5, 0).unwrap().into());
 		assert_eq!(Player::Blue, cf.turn);
 	}
 
@@ -190,8 +195,8 @@ mod tests {
 			4  B - - - - - -
 			5  R - - - - - -
 		*/
-		assert_eq!(Some(&Player::Red), cf.board.get(5, 0));
-		assert_eq!(Some(&Player::Blue), cf.board.get(4, 0));
+		assert_eq!(Player::Red, cf.board.get(5, 0).unwrap().into());
+		assert_eq!(Player::Blue, cf.board.get(4, 0).unwrap().into());
 		assert_eq!(Player::Red, cf.turn);
 	}
 
@@ -208,7 +213,7 @@ mod tests {
 			4  - - - - - - -
 			5  - - - - - - R
 		*/
-		assert_eq!(Some(&Player::Red), cf.board.get(5, 6));
+		assert_eq!(Player::Red, cf.board.get(5, 6).unwrap().into());
 		assert_eq!(Player::Blue, cf.turn);
 	}
 
@@ -245,12 +250,12 @@ mod tests {
 			4  B - - - - - -
 			5  R - - - - - -
 		*/
-		assert_eq!(Some(&Player::Red), cf.board.get(5, 0));
-		assert_eq!(Some(&Player::Blue), cf.board.get(4, 0));
-		assert_eq!(Some(&Player::Red), cf.board.get(3, 0));
-		assert_eq!(Some(&Player::Blue), cf.board.get(2, 0));
-		assert_eq!(Some(&Player::Red), cf.board.get(1, 0));
-		assert_eq!(Some(&Player::Blue), cf.board.get(0, 0));
+		assert_eq!(Player::Red, cf.board.get(5, 0).unwrap().into());
+		assert_eq!(Player::Blue, cf.board.get(4, 0).unwrap().into());
+		assert_eq!(Player::Red, cf.board.get(3, 0).unwrap().into());
+		assert_eq!(Player::Blue, cf.board.get(2, 0).unwrap().into());
+		assert_eq!(Player::Red, cf.board.get(1, 0).unwrap().into());
+		assert_eq!(Player::Blue, cf.board.get(0, 0).unwrap().into());
 	}
 
 	#[test]
@@ -272,12 +277,12 @@ mod tests {
 			4  B - - - - - -
 			5  R - - - - - -
 		*/
-		assert_eq!(Some(&Player::Red), cf.board.get(5, 0));
-		assert_eq!(Some(&Player::Blue), cf.board.get(4, 0));
-		assert_eq!(Some(&Player::Red), cf.board.get(3, 0));
-		assert_eq!(Some(&Player::Blue), cf.board.get(2, 0));
-		assert_eq!(Some(&Player::Red), cf.board.get(1, 0));
-		assert_eq!(Some(&Player::Blue), cf.board.get(0, 0));
+		assert_eq!(Player::Red, cf.board.get(5, 0).unwrap().into());
+		assert_eq!(Player::Blue, cf.board.get(4, 0).unwrap().into());
+		assert_eq!(Player::Red, cf.board.get(3, 0).unwrap().into());
+		assert_eq!(Player::Blue, cf.board.get(2, 0).unwrap().into());
+		assert_eq!(Player::Red, cf.board.get(1, 0).unwrap().into());
+		assert_eq!(Player::Blue, cf.board.get(0, 0).unwrap().into());
 	}
 
 	#[test]
