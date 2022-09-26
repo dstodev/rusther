@@ -2,7 +2,7 @@ use crate::utility::probe::ScopeTime;
 
 macro_rules! log_scope_time {
     () => {
-        let _time = ScopeTime::new(|duration| log::info!("{:#?}", duration));
+        let _time = ScopeTime::new(|origin, duration| log::info!("at {:#?} for {:#?}", origin, duration));
     };
 }
 
