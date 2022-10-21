@@ -23,6 +23,7 @@ impl<F> ScopeTime<F>
 where
     F: Callback,
 {
+    #[must_use]
     pub fn new(on_drop: F) -> Self {
         Self {
             state: Some(ScopeTimeState {
@@ -49,8 +50,7 @@ where
 #[macro_export]
 macro_rules! log_scope_time {
     () => {
-        use crate::utility::ScopeTime;
-        let _time = ScopeTime::new(|start, end| log::info!("Duration: {:?}", end - start));
+        log_scope_time!("Probe");
     };
     ($prefix:expr) => {
         let _time = crate::utility::ScopeTime::new(|start, end| {
