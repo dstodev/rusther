@@ -105,7 +105,7 @@ impl Arbiter {
 #[async_trait]
 impl EventHandler for Arbiter {
 	async fn message(&self, ctx: Context, mut msg: Message) {
-		if msg.author.id == ctx.cache.current_user_id().await {
+		if msg.author.id == ctx.cache.current_user_id() {
 			log::trace!("Skipping own message");
 			return;
 		}
@@ -132,7 +132,7 @@ impl EventHandler for Arbiter {
 	}
 	async fn message_update(&self, ctx: Context, _old_if_available: Option<Message>, _new: Option<Message>, event: MessageUpdateEvent) {
 		if let Some(user) = &event.author {
-			if user.id == ctx.cache.current_user_id().await {
+			if user.id == ctx.cache.current_user_id() {
 				log::trace!("Skipping own message_update");
 				return;
 			}
@@ -160,7 +160,7 @@ impl EventHandler for Arbiter {
 			let safe_add_reaction = Arc::new(add_reaction);
 
 			if let Some(user_id) = safe_add_reaction.user_id {
-				if user_id == safe_ctx.cache.current_user_id().await {
+				if user_id == safe_ctx.cache.current_user_id() {
 					log::trace!("Skipping own reaction_add");
 					return;
 				}

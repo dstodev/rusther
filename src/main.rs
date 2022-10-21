@@ -41,8 +41,11 @@ fn main() -> Result<(), String> {
 		.build()
 		.unwrap();
 
-	runtime.block_on(async move {  // or just async (no move)?
-		let mut client = Client::builder(token)
+	runtime.block_on(async move {
+        log_scope_time!();
+
+		let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
+		let mut client = Client::builder(token, intents)
 			.event_handler(arbiter)
 			.await
 			.expect("Could not create client!");
