@@ -45,11 +45,17 @@ where
     }
 }
 
+// https://doc.rust-lang.org/rust-by-example/macros.html
 #[macro_export]
 macro_rules! log_scope_time {
     () => {
         use crate::utility::ScopeTime;
-        let _time = ScopeTime::new(|start, end| log::info!("{:#?} -> {:#?}", start, end));
+        let _time = ScopeTime::new(|start, end| log::info!("Duration: {:?}", end - start));
+    };
+    ($prefix:expr) => {
+        let _time = crate::utility::ScopeTime::new(|start, end| {
+            log::info!("{} duration: {:?}", $prefix, end - start)
+        });
     };
 }
 
@@ -57,13 +63,30 @@ macro_rules! log_scope_time {
 mod tests {
     use std::time::Duration;
 
+    use rand::Rng;
     use tokio::runtime::Builder;
 
     use super::*;
 
+    macro_rules! jitter {
+        () => {
+            for _ in 0..rand::thread_rng().gen_range(0..1000) {
+                loop {
+                    if rand::random() {
+                        break;
+                    }
+                }
+            }
+        };
+    }
+
+    const ITERATIONS: usize = 15;
+
     #[test]
     fn test_probe_scope() {
-        for _ in 0..10 {
+        for _ in 0..ITERATIONS {
+            jitter!();
+
             let mut scope_start = Instant::now();
             let mut scope_end = scope_start.clone();
 
@@ -92,7 +115,9 @@ mod tests {
 
         let runtime = Builder::new_multi_thread().enable_all().build().unwrap();
 
-        for _ in 0..10 {
+        for _ in 0..ITERATIONS {
+            jitter!();
+
             runtime.block_on(async {
                 let _probe = ScopeTime::new(|start, end| {
                     duration = end - start;

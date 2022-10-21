@@ -13,6 +13,7 @@ use serenity::{
 
 use crate::{
     commands::game_c4::c4::{ConnectFour, GameState, Player},
+    log_scope_time,
     rusther::EventSubHandler,
 };
 
@@ -35,6 +36,7 @@ impl ConnectFourContext {
 
 impl ConnectFourContext {
     async fn render(&mut self, http: &Arc<Http>) {
+        log_scope_time!("Render");
         let say = self.get_render_string();
         let message = &mut self.message;
 
@@ -43,6 +45,7 @@ impl ConnectFourContext {
         }
     }
     async fn delete_reactions(&mut self, http: &Arc<Http>) {
+        log_scope_time!();
         for reaction in self.reactions.drain(..) {
             let _ = reaction.delete_all(http).await;
         }

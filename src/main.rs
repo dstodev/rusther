@@ -8,6 +8,7 @@ use serenity::prelude::*;
 use simple_logger::SimpleLogger;
 use tokio::runtime::Builder;
 
+use commands::ConnectFourDiscord;
 use rusther::Arbiter;
 
 mod commands;
@@ -32,13 +33,9 @@ fn main() -> Result<(), String> {
 
     arbiter.register_event_handler("ping", Box::new(commands::Ping::new()))?;
     arbiter.register_event_handler("announce", Box::new(commands::Announce))?;
-    arbiter.register_event_handler(
-        "connect_four",
-        Box::new(commands::ConnectFourDiscord::new()),
-    )?;
+    arbiter.register_event_handler("connect_four", Box::new(ConnectFourDiscord::new()))?;
 
     let token = get_token().unwrap();
-
     let runtime = Builder::new_multi_thread().enable_all().build().unwrap();
 
     runtime.block_on(async move {
