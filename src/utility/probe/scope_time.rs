@@ -90,7 +90,7 @@ mod tests {
             let mut scope_start = Instant::now();
             let mut scope_end = scope_start.clone();
 
-            std::thread::sleep(Duration::new(0, 1)); // Sleep for 1 nanosecond
+            std::thread::sleep(Duration::from_nanos(1));
 
             let before_scope = Instant::now();
             {
@@ -98,14 +98,14 @@ mod tests {
                     scope_start = start;
                     scope_end = end;
                 });
-                std::thread::sleep(Duration::new(0, 1));
+                std::thread::sleep(Duration::from_nanos(1));
             }
 
             assert!(scope_start >= before_scope);
             assert!(scope_end > scope_start);
 
             let delta = scope_end - scope_start;
-            assert!(delta >= Duration::new(0, 1));
+            assert!(delta >= Duration::from_nanos(1));
         }
     }
 
@@ -122,10 +122,10 @@ mod tests {
                 let _probe = ScopeTime::new(|start, end| {
                     duration = end - start;
                 });
-                tokio::time::sleep(Duration::new(0, 1)).await;
+                tokio::time::sleep(Duration::from_nanos(1)).await;
             });
             assert!(
-                duration >= Duration::new(0, 1),
+                duration >= Duration::from_nanos(1),
                 "duration was {:#?}",
                 duration
             );
