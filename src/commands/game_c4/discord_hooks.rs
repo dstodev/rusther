@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use serenity::{
     async_trait,
-    http::Http,
+    http::CacheHttp,
     model::{
         channel::{Message, Reaction, ReactionType},
         id::MessageId,
@@ -18,13 +18,13 @@ use crate::{
 };
 
 #[derive(Debug)]
-struct ConnectFourContext {
+struct ConnectFourState {
     game: ConnectFour,
     message: Message,
     reactions: Vec<Reaction>,
 }
 
-impl ConnectFourContext {
+impl ConnectFourState {
     pub fn new(game: ConnectFour, message: Message) -> Self {
         Self {
             game,
@@ -34,21 +34,26 @@ impl ConnectFourContext {
     }
 }
 
-impl ConnectFourContext {
-    async fn render(&mut self, http: &Arc<Http>) {
+impl ConnectFourState {
+    async fn render(&mut self, http: impl CacheHttp) {
         log_scope_time!("Render");
 
         let say = self.get_render_string();
-        let message = &mut self.message;
 
-        if let Err(reason) = message.edit(http, |builder| builder.content(say)).await {
+        if let Err(reason) = self
+            .message
+            .edit(http, |builder| builder.content(say))
+            .await
+        {
             log::debug!("Could not edit message because {:?}", reason);
         }
     }
-    async fn delete_reactions(&mut self, http: &Arc<Http>) {
+    async fn delete_reactions(&mut self, http: impl CacheHttp) {
         log_scope_time!();
         for reaction in self.reactions.drain(..) {
-            let _ = reaction.delete_all(http).await;
+            if let Err(reason) = reaction.delete_all(&http).await {
+                log::debug!("Could not delete reactions because {:?}", reason);
+            }
         }
     }
     fn get_render_string(&self) -> String {
@@ -122,7 +127,7 @@ impl ConnectFourContext {
         }
         board
     }
-    async fn add_reactions(&mut self, http: &Arc<Http>) {
+    async fn add_reactions(&mut self, http: impl CacheHttp) {
         let width = self.game.board.width();
         let message = &self.message;
         let reaction_cache = &mut self.reactions;
@@ -131,7 +136,7 @@ impl ConnectFourContext {
             let reaction = Self::get_reaction_for_column(column);
 
             // Add one-at-a-time to ensure they are added in order
-            match message.react(http, reaction).await {
+            match message.react(&http, reaction).await {
                 Ok(reaction) => reaction_cache.push(reaction),
                 Err(reason) => log::debug!("Could not react because {:?}", reason),
             }
@@ -147,18 +152,18 @@ impl ConnectFourContext {
         // see: https://unicode.org/emoji/charts-12.0/full-emoji-list.html#0030_fe0f_20e3
         format!("{}\u{fe0f}\u{20e3}", column)
     }
-    async fn finalize(&mut self, http: &Arc<Http>) {
+    async fn finalize(&mut self, http: impl CacheHttp) {
         // If a player has won, do not override the game state to closed i.e. 'draw'.
         if self.game.state == GameState::Playing {
             self.game.state = GameState::Closed;
         }
-        self.render(http).await;
-        self.delete_reactions(http).await;
+        self.render(&http).await;
+        self.delete_reactions(&http).await;
     }
 }
 
 pub struct ConnectFourDiscord {
-    games: HashMap<MessageId, Arc<Mutex<ConnectFourContext>>>,
+    games: HashMap<MessageId, Arc<Mutex<ConnectFourState>>>,
 }
 
 impl ConnectFourDiscord {
@@ -178,11 +183,11 @@ impl EventSubHandler for ConnectFourDiscord {
             "c4 start" => {
                 let say = ":anchor:";
 
-                match new_message.channel_id.say(&ctx.http, say).await {
+                match new_message.channel_id.say(&ctx, say).await {
                     Ok(message) => {
                         let id = message.id;
                         let game = ConnectFour::new(7, 6);
-                        let context = ConnectFourContext::new(game, message);
+                        let context = ConnectFourState::new(game, message);
 
                         if self
                             .games
@@ -193,8 +198,8 @@ impl EventSubHandler for ConnectFourDiscord {
                         }
                         if let Some(mutex) = self.games.get(&id) {
                             let mut context = mutex.lock().await;
-                            context.render(&ctx.http).await;
-                            context.add_reactions(&ctx.http).await;
+                            context.render(&ctx).await;
+                            context.add_reactions(&ctx).await;
                         }
                     }
                     Err(reason) => {
@@ -204,12 +209,8 @@ impl EventSubHandler for ConnectFourDiscord {
             }
             "c4 purge" => {
                 for (_id, mutex) in self.games.drain() {
-                    let http = ctx.http.clone();
-
-                    tokio::spawn(async move {
-                        let mut instance = mutex.lock().await;
-                        instance.finalize(&http).await;
-                    });
+                    let mut state = mutex.lock().await;
+                    state.finalize(&ctx).await;
                 }
             }
             _ => {}
@@ -221,51 +222,38 @@ impl EventSubHandler for ConnectFourDiscord {
 
         if let Some(mutex) = self.games.get(&id).cloned() {
             let reaction_unicode = add_reaction.emoji.as_data();
-            let sub_http = ctx.http.clone();
 
-            /* .lock_owned() is used when the returned instance is moved to another task.
-                 However, even though it is moved to another task, the state is still locked,
-                 so sub-tasks should remain minimal.
-            */
-            let mut instance = mutex.lock_owned().await;
-            let game = &mut instance.game;
+            let state = mutex.lock().await;
+            let mut game = state.game.clone();
+            drop(state);
 
             let should_respond =
                 game.state == GameState::Playing && reaction_unicode.ends_with("\u{fe0f}\u{20e3}");
 
             if should_respond {
-                tokio::spawn(async move {
-                    if let Err(reason) = add_reaction.delete(&sub_http).await {
-                        log::debug!("Could not remove reaction because {:?}", reason);
-                    };
-                });
+                if let Err(reason) = add_reaction.delete(&ctx.clone()).await {
+                    log::debug!("Could not remove reaction because {:?}", reason);
+                };
 
                 let column = reaction_unicode.as_bytes()[0] - 0x30;
 
                 if game.emplace(column.into()) && game.state != GameState::Playing {
-                    // Signal that the game has ended, ...
                     game_has_ended = true;
                 }
-                let http = ctx.http.clone();
-                tokio::spawn(async move {
-                    /* TODO: How can we drop intermediate render requests, given a user provides
-                            many simultaneous reactions?
-                    */
-                    instance.render(&http).await;
-                });
-            }
-            // ... and release the instance lock.
-        }
-        if game_has_ended {
-            /* TODO: Figure out when to remove games.
-            If we use self.games.remove() here, there is no guarantee other tasks have
-            all completed, which may want to use the instance context. */
 
-            log::info!("Game {} has concluded!", id);
+                let mut state = mutex.lock().await;
+                state.game = game;
 
-            if let Some(mutex) = self.games.get(&id) {
-                let mut instance = mutex.lock().await;
-                instance.finalize(&ctx.http).await;
+                if game_has_ended {
+                    /* TODO: Figure out when to remove games.
+                    If self.games.remove() here, there is no guarantee other tasks have
+                    all completed, which may use the instance context. */
+
+                    log::info!("Game {} has concluded!", id);
+                    state.finalize(&ctx).await;
+                } else {
+                    state.render(&ctx).await;
+                }
             }
         }
     }

@@ -26,7 +26,7 @@ impl<T> Token<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Board<T> {
     width: i32,
     height: i32,

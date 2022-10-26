@@ -29,14 +29,14 @@ impl Not for Player {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum GameState {
     Closed,
     Playing,
     Won { player: Player },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ConnectFour {
     pub turn: Player,
     pub state: GameState,

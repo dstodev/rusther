@@ -116,18 +116,18 @@ impl EventHandler for Arbiter {
                 return;
             }
         }
-        let safe_ctx = Arc::new(ctx);
-        let safe_event = Arc::new(event);
+        let ctx = Arc::new(ctx);
+        let event = Arc::new(event);
 
         let handlers = self.clone_handlers();
 
         for handler in handlers {
-            let sub_ctx = safe_ctx.clone();
-            let sub_event = safe_event.clone();
+            let ctx = ctx.clone();
+            let event = event.clone();
 
             tokio::spawn(async move {
                 let mut handler = handler.lock().await;
-                handler.message_update(sub_ctx, sub_event).await;
+                handler.message_update(ctx, event).await;
             });
         }
     }
@@ -135,23 +135,23 @@ impl EventHandler for Arbiter {
         let handlers = self.clone_handlers();
 
         tokio::spawn(async move {
-            let safe_ctx = Arc::new(ctx);
-            let safe_add_reaction = Arc::new(add_reaction);
+            let ctx = Arc::new(ctx);
+            let add_reaction = Arc::new(add_reaction);
 
-            if let Some(user_id) = safe_add_reaction.user_id {
-                if user_id == safe_ctx.cache.current_user_id() {
+            if let Some(user_id) = add_reaction.user_id {
+                if user_id == ctx.cache.current_user_id() {
                     log::trace!("Skipping own reaction_add");
                     return;
                 }
             }
 
             for handler in handlers {
-                let sub_ctx = safe_ctx.clone();
-                let sub_add_reaction = safe_add_reaction.clone();
+                let ctx = ctx.clone();
+                let add_reaction = add_reaction.clone();
 
                 tokio::spawn(async move {
                     let mut handler = handler.lock().await;
-                    handler.reaction_add(sub_ctx, sub_add_reaction).await;
+                    handler.reaction_add(ctx, add_reaction).await;
                 });
             }
         });
@@ -160,8 +160,8 @@ impl EventHandler for Arbiter {
         // This function should remain the simplest event forwarder, as example.
 
         // Clones of these Arc<> will be moved to child tasks.
-        let safe_ctx = Arc::new(ctx);
-        let safe_ready = Arc::new(ready);
+        let ctx = Arc::new(ctx);
+        let ready = Arc::new(ready);
 
         /* self.commands is a list of Arc<>, so cloning it is not cloning the handlers.
            Instead, it is cloning pointers to the handlers, which are locked behind mutexes.
@@ -170,20 +170,20 @@ impl EventHandler for Arbiter {
            by dropping from scope.
         */
         let mut user_id = self.user_id.lock().await;
-        *user_id = safe_ready.user.id;
+        *user_id = ready.user.id;
         drop(user_id);
 
         let handlers = self.clone_handlers();
 
         // Spawn a task for each sub-handler.
         for handler in handlers {
-            let sub_ctx = safe_ctx.clone();
-            let sub_ready = safe_ready.clone();
+            let ctx = ctx.clone();
+            let ready = ready.clone();
 
             tokio::spawn(async move {
                 // Each task will wait for and then give input to a sub-handler.
                 let mut handler = handler.lock().await;
-                handler.ready(sub_ctx, sub_ready).await;
+                handler.ready(ctx, ready).await;
             });
         }
     }
