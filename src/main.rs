@@ -31,9 +31,9 @@ fn main() -> Result<(), String> {
 
     let mut arbiter = Arbiter::new();
 
-    arbiter.register_event_handler("ping", Box::new(commands::Ping::new()))?;
-    arbiter.register_event_handler("announce", Box::new(commands::Announce))?;
-    arbiter.register_event_handler("connect_four", Box::new(ConnectFourDiscord::new()))?;
+    arbiter.register_event_handler("ping", commands::Ping::new())?;
+    arbiter.register_event_handler("announce", commands::Announce)?;
+    arbiter.register_event_handler("connect_four", ConnectFourDiscord::new())?;
 
     let token = get_token().unwrap();
     let runtime = Builder::new_multi_thread().enable_all().build().unwrap();

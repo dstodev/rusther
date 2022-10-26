@@ -37,6 +37,7 @@ impl ConnectFourContext {
 impl ConnectFourContext {
     async fn render(&mut self, http: &Arc<Http>) {
         log_scope_time!("Render");
+
         let say = self.get_render_string();
         let message = &mut self.message;
 
