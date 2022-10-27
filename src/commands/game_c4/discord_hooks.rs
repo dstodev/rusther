@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use serenity::{
     async_trait,
@@ -163,7 +162,7 @@ impl ConnectFourState {
 }
 
 pub struct ConnectFourDiscord {
-    games: HashMap<MessageId, Arc<Mutex<ConnectFourState>>>,
+    games: HashMap<MessageId, ConnectFourState>,
 }
 
 impl ConnectFourDiscord {
@@ -176,30 +175,23 @@ impl ConnectFourDiscord {
 
 #[async_trait]
 impl EventSubHandler for ConnectFourDiscord {
-    async fn message(&mut self, context: Context, new_message: Message) {
-        let message = &new_message.content;
-
-        match message.as_str() {
+    async fn message(&mut self, context: Context, message: Message) {
+        match message.content.as_str() {
             "c4 start" => {
                 let say = ":anchor:";
 
-                match new_message.channel_id.say(&context, say).await {
+                match message.channel_id.say(&context, say).await {
                     Ok(message) => {
                         let id = message.id;
                         let game = ConnectFour::new(7, 6);
                         let state = ConnectFourState::new(game, message);
 
-                        if self
-                            .games
-                            .insert(id, Arc::new(Mutex::new(state)))
-                            .is_some()
-                        {
+                        if self.games.insert(id, state).is_some() {
                             log::debug!("Hashmap key collision!");
                         }
-                        if let Some(mutex) = self.games.get(&id) {
-                            let mut lock = mutex.lock().await;
-                            lock.render(&context).await;
-                            lock.add_reactions(&context).await;
+                        if let Some(game) = self.games.get_mut(&id) {
+                            game.render(&context).await;
+                            game.add_reactions(&context).await;
                         }
                     }
                     Err(reason) => {
@@ -208,44 +200,34 @@ impl EventSubHandler for ConnectFourDiscord {
                 }
             }
             "c4 purge" => {
-                for (_id, mutex) in self.games.drain() {
+                for (_id, mut game) in self.games.drain() {
                     let http = context.http.clone();
-                    tokio::spawn(async move {
-                        let mut state = mutex.lock().await;
-                        state.finalize(http).await;
-                    });
+                    game.finalize(http).await;
                 }
             }
             _ => {}
         }
     }
-    async fn reaction_add(&mut self, context: Context, add_reaction: Reaction) {
-        let id = add_reaction.message_id;
+    async fn reaction_add(&mut self, context: Context, reaction: Reaction) {
+        let id = reaction.message_id;
         let mut game_has_ended: bool = false;
 
-        if let Some(mutex) = self.games.get(&id).cloned() {
-            let reaction_unicode = add_reaction.emoji.as_data();
+        if let Some(state) = self.games.get_mut(&id) {
+            let reaction_unicode = reaction.emoji.as_data();
 
-            let state = mutex.lock().await;
-            let mut game = state.game.clone();
-            drop(state);
-
-            let should_respond =
-                game.state == GameState::Playing && reaction_unicode.ends_with("\u{fe0f}\u{20e3}");
+            let should_respond = state.game.state == GameState::Playing
+                && reaction_unicode.ends_with("\u{fe0f}\u{20e3}");
 
             if should_respond {
-                if let Err(reason) = add_reaction.delete(&context.clone()).await {
+                if let Err(reason) = reaction.delete(&context.clone()).await {
                     log::debug!("Could not remove reaction because {:?}", reason);
                 };
 
                 let column = reaction_unicode.as_bytes()[0] - 0x30;
 
-                if game.emplace(column.into()) && game.state != GameState::Playing {
+                if state.game.emplace(column.into()) && state.game.state != GameState::Playing {
                     game_has_ended = true;
                 }
-
-                let mut state = mutex.lock().await;
-                state.game = game;
 
                 if game_has_ended {
                     /* TODO: Figure out when to remove games.
