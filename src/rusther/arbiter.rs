@@ -56,6 +56,7 @@ pub struct Arbiter {
 impl Arbiter {
     pub fn new(handle: Handle) -> Self {
         const CHANNEL_CAPACITY: usize = 100;
+        const PREFIX: char = '!';
 
         let (message_tx, _message_rx) = broadcast::channel(CHANNEL_CAPACITY);
         let (message_update_tx, _message_update_rx) = broadcast::channel(CHANNEL_CAPACITY);
@@ -64,7 +65,7 @@ impl Arbiter {
 
         Self {
             tokio_rt_handle: handle,
-            command_prefix: '!',
+            command_prefix: PREFIX,
             user_id: Arc::new(Mutex::new(UserId::default())),
 
             message_tx: Some(message_tx),
@@ -91,6 +92,7 @@ impl Arbiter {
                     Ok((context, old, new, event)) = message_update_rx.recv() => handler.message_update(context, old, new, event).await,
                     Ok((context, reaction)) = reaction_add_rx.recv() => handler.reaction_add(context, reaction).await,
                     Ok((context, ready)) = ready_rx.recv() => handler.ready(context, ready).await,
+                    else => break,
                 }
             }
         });
