@@ -6,7 +6,7 @@ use std::fs;
 use log::LevelFilter;
 use serenity::prelude::*;
 use simple_logger::SimpleLogger;
-use tokio::runtime::Builder;
+use tokio::runtime::Handle;
 
 use commands::ConnectFourDiscord;
 use rusther::Arbiter;
@@ -15,7 +15,8 @@ mod commands;
 mod rusther;
 mod utility;
 
-fn main() -> Result<(), String> {
+#[tokio::main(flavor = "multi_thread")]
+async fn main() -> Result<(), String> {
     SimpleLogger::new()
         .with_colors(true)
         .with_local_timestamps()
@@ -29,26 +30,23 @@ fn main() -> Result<(), String> {
     log::debug!("  With debug messages");
     log::trace!("  With trace messages");
 
-    let mut arbiter = Arbiter::new();
+    let mut arbiter = Arbiter::new(Handle::current());
 
-    arbiter.register_event_handler("ping", commands::Ping::new())?;
-    arbiter.register_event_handler("announce", commands::Announce)?;
-    arbiter.register_event_handler("connect_four", ConnectFourDiscord::new())?;
+    arbiter.register_event_handler(commands::Ping::new())?;
+    arbiter.register_event_handler(commands::Announce)?;
+    arbiter.register_event_handler(ConnectFourDiscord::new())?;
 
     let token = get_token().unwrap();
-    let runtime = Builder::new_multi_thread().enable_all().build().unwrap();
 
-    runtime.block_on(async move {
-        let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
-        let mut client = Client::builder(token, intents)
-            .event_handler(arbiter)
-            .await
-            .expect("Could not create client!");
+    let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
+    let mut client = Client::builder(token, intents)
+        .event_handler(arbiter)
+        .await
+        .expect("Could not create client!");
 
-        if let Err(reason) = client.start().await {
-            log::debug!("Client failed to start because {:?}", reason);
-        }
-    });
+    if let Err(reason) = client.start().await {
+        log::debug!("Client failed to start because {:?}", reason);
+    }
 
     Ok(())
 }

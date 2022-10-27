@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use serenity::{
@@ -11,7 +10,10 @@ use serenity::{
     },
     prelude::*,
 };
-use tokio::sync::Mutex;
+use tokio::{
+    runtime::Handle,
+    sync::{broadcast, Mutex},
+};
 
 use crate::rusther::EventSubHandler;
 
@@ -34,34 +36,68 @@ use crate::rusther::EventSubHandler;
 /// Atomically-reference-counted (ARC) pointer clones for each sub-handler are distributed to
 /// tasks per event invocation, each pointing to the mutex guarding the event handler.
 pub struct Arbiter {
+    tokio_rt_handle: Handle,
     command_prefix: char,
-    commands: HashMap<&'static str, Arc<Mutex<dyn EventSubHandler>>>,
     user_id: Arc<Mutex<UserId>>,
+
+    message_tx: Option<broadcast::Sender<(Context, Message)>>,
+    message_update_tx: Option<
+        broadcast::Sender<(
+            Context,
+            Option<Message>,
+            Option<Message>,
+            MessageUpdateEvent,
+        )>,
+    >,
+    reaction_add_tx: Option<broadcast::Sender<(Context, Reaction)>>,
+    ready_tx: Option<broadcast::Sender<(Context, Ready)>>,
 }
 
 impl Arbiter {
-    pub fn new() -> Self {
+    pub fn new(handle: Handle) -> Self {
+        const CHANNEL_CAPACITY: usize = 100;
+
+        let (message_tx, _message_rx) = broadcast::channel(CHANNEL_CAPACITY);
+        let (message_update_tx, _message_update_rx) = broadcast::channel(CHANNEL_CAPACITY);
+        let (reaction_add_tx, _reaction_add_rx) = broadcast::channel(CHANNEL_CAPACITY);
+        let (ready_tx, _ready_rx) = broadcast::channel(CHANNEL_CAPACITY);
+
         Self {
+            tokio_rt_handle: handle,
             command_prefix: '!',
-            commands: HashMap::new(),
             user_id: Arc::new(Mutex::new(UserId::default())),
+
+            message_tx: Some(message_tx),
+            message_update_tx: Some(message_update_tx),
+            reaction_add_tx: Some(reaction_add_tx),
+            ready_tx: Some(ready_tx),
         }
     }
     // TODO: Make providing a name optional
     pub fn register_event_handler(
         &mut self,
-        name: &'static str,
-        handler: impl EventSubHandler + 'static,
+        mut handler: impl EventSubHandler + 'static,
     ) -> Result<(), String> {
-        if self
-            .commands
-            .insert(name, Arc::new(Mutex::new(handler)))
-            .is_some()
-        {
-            return Err(format!("A command named '{}' already exists!", name));
-        }
+        let mut message_rx = self.message_tx.as_ref().unwrap().subscribe();
+        let mut message_update_rx = self.message_update_tx.as_ref().unwrap().subscribe();
+        let mut reaction_add_rx = self.reaction_add_tx.as_ref().unwrap().subscribe();
+        let mut ready_rx = self.ready_tx.as_ref().unwrap().subscribe();
+
+        self.tokio_rt_handle.spawn(async move {
+            // TODO: Loop termination condition
+            loop {
+                tokio::select! {
+                    Ok((context, message)) = message_rx.recv() => handler.message(context, message).await,
+                    Ok((context, old, new, event)) = message_update_rx.recv() => handler.message_update(context, old, new, event).await,
+                    Ok((context, reaction)) = reaction_add_rx.recv() => handler.reaction_add(context, reaction).await,
+                    Ok((context, ready)) = ready_rx.recv() => handler.ready(context, ready).await,
+                }
+            }
+        });
+
         Ok(())
     }
+
     fn sanitize(content: String) -> String {
         let mut result = content;
 
@@ -70,153 +106,83 @@ impl Arbiter {
 
         result
     }
-    fn clone_handlers(&self) -> Vec<Arc<Mutex<dyn EventSubHandler>>> {
-        self.commands.values().cloned().collect()
-    }
 }
 
 #[async_trait]
 impl EventHandler for Arbiter {
-    async fn message(&self, ctx: Context, mut msg: Message) {
-        if msg.author.id == ctx.cache.current_user_id() {
+    async fn message(&self, context: Context, mut msg: Message) {
+        if msg.author.id == context.cache.current_user_id() {
             log::trace!("Skipping own message");
             return;
         }
         let prefix = self.command_prefix;
 
-        if msg.content.starts_with(prefix) {
-            msg.content = Self::sanitize(msg.content);
-
-            let safe_ctx = Arc::new(ctx);
-            let safe_msg = Arc::new(msg);
-
-            let handlers = self.clone_handlers();
-
-            for handler in handlers {
-                let sub_ctx = safe_ctx.clone();
-                let sub_msg = safe_msg.clone();
-
-                tokio::spawn(async move {
-                    let mut handler = handler.lock().await;
-                    handler.message(sub_ctx, sub_msg).await;
-                });
+        if let Some(message_tx) = &self.message_tx {
+            if msg.content.starts_with(prefix) {
+                msg.content = Self::sanitize(msg.content);
+                let _ = message_tx.send((context, msg));
             }
         }
     }
     async fn message_update(
         &self,
-        ctx: Context,
-        _old_if_available: Option<Message>,
-        _new: Option<Message>,
+        context: Context,
+        old: Option<Message>,
+        new: Option<Message>,
         event: MessageUpdateEvent,
     ) {
         if let Some(user) = &event.author {
-            if user.id == ctx.cache.current_user_id() {
+            if user.id == context.cache.current_user_id() {
                 log::trace!("Skipping own message_update");
                 return;
             }
         }
-        let ctx = Arc::new(ctx);
-        let event = Arc::new(event);
-
-        let handlers = self.clone_handlers();
-
-        for handler in handlers {
-            let ctx = ctx.clone();
-            let event = event.clone();
-
-            tokio::spawn(async move {
-                let mut handler = handler.lock().await;
-                handler.message_update(ctx, event).await;
-            });
+        if let Some(message_update_tx) = &self.message_update_tx {
+            let _ = message_update_tx.send((context, old, new, event));
         }
     }
-    async fn reaction_add(&self, ctx: Context, add_reaction: Reaction) {
-        let handlers = self.clone_handlers();
-
-        tokio::spawn(async move {
-            let ctx = Arc::new(ctx);
-            let add_reaction = Arc::new(add_reaction);
-
-            if let Some(user_id) = add_reaction.user_id {
-                if user_id == ctx.cache.current_user_id() {
-                    log::trace!("Skipping own reaction_add");
-                    return;
-                }
+    async fn reaction_add(&self, context: Context, reaction: Reaction) {
+        if let Some(user_id) = reaction.user_id {
+            if user_id == context.cache.current_user_id() {
+                log::trace!("Skipping own reaction_add");
+                return;
             }
-
-            for handler in handlers {
-                let ctx = ctx.clone();
-                let add_reaction = add_reaction.clone();
-
-                tokio::spawn(async move {
-                    let mut handler = handler.lock().await;
-                    handler.reaction_add(ctx, add_reaction).await;
-                });
-            }
-        });
+        }
+        if let Some(reaction_add_tx) = &self.reaction_add_tx {
+            let _ = reaction_add_tx.send((context, reaction));
+        }
     }
-    async fn ready(&self, ctx: Context, ready: Ready) {
-        // This function should remain the simplest event forwarder, as example.
-
-        // Clones of these Arc<> will be moved to child tasks.
-        let ctx = Arc::new(ctx);
-        let ready = Arc::new(ready);
-
-        /* self.commands is a list of Arc<>, so cloning it is not cloning the handlers.
-           Instead, it is cloning pointers to the handlers, which are locked behind mutexes.
-
-           Access to the state mutex is kept minimal and it is released as soon as possible
-           by dropping from scope.
-        */
+    async fn ready(&self, context: Context, ready: Ready) {
         let mut user_id = self.user_id.lock().await;
         *user_id = ready.user.id;
         drop(user_id);
 
-        let handlers = self.clone_handlers();
-
-        // Spawn a task for each sub-handler.
-        for handler in handlers {
-            let ctx = ctx.clone();
-            let ready = ready.clone();
-
-            tokio::spawn(async move {
-                // Each task will wait for and then give input to a sub-handler.
-                let mut handler = handler.lock().await;
-                handler.ready(ctx, ready).await;
-            });
+        if let Some(ready_tx) = &self.ready_tx {
+            let _ = ready_tx.send((context, ready));
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use tokio::runtime::Runtime;
+
     use super::*;
 
     struct UnitRecipient;
 
     #[async_trait]
     impl EventSubHandler for UnitRecipient {
-        async fn message(&mut self, _ctx: Arc<Context>, _msg: Arc<Message>) {}
+        async fn message(&mut self, _context: Context, _msg: Message) {}
     }
 
     #[test]
     fn register_text_command() {
-        let mut arbiter = Arbiter::new();
+        let rt = Runtime::new().unwrap();
+        let mut arbiter = Arbiter::new(rt.handle().clone());
 
-        let result = arbiter.register_event_handler("test", UnitRecipient);
+        let result = arbiter.register_event_handler(UnitRecipient);
         assert!(result.is_ok());
-    }
-
-    #[test]
-    fn register_text_command_duplicate() {
-        let mut arbiter = Arbiter::new();
-
-        let result = arbiter.register_event_handler("test", UnitRecipient);
-        assert!(result.is_ok());
-
-        let result = arbiter.register_event_handler("test", UnitRecipient);
-        assert!(result.is_err());
     }
 
     #[test]

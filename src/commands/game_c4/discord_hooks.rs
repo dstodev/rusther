@@ -176,30 +176,30 @@ impl ConnectFourDiscord {
 
 #[async_trait]
 impl EventSubHandler for ConnectFourDiscord {
-    async fn message(&mut self, ctx: Arc<Context>, new_message: Arc<Message>) {
+    async fn message(&mut self, context: Context, new_message: Message) {
         let message = &new_message.content;
 
         match message.as_str() {
             "c4 start" => {
                 let say = ":anchor:";
 
-                match new_message.channel_id.say(&ctx, say).await {
+                match new_message.channel_id.say(&context, say).await {
                     Ok(message) => {
                         let id = message.id;
                         let game = ConnectFour::new(7, 6);
-                        let context = ConnectFourState::new(game, message);
+                        let state = ConnectFourState::new(game, message);
 
                         if self
                             .games
-                            .insert(id, Arc::new(Mutex::new(context)))
+                            .insert(id, Arc::new(Mutex::new(state)))
                             .is_some()
                         {
                             log::debug!("Hashmap key collision!");
                         }
                         if let Some(mutex) = self.games.get(&id) {
-                            let mut context = mutex.lock().await;
-                            context.render(&ctx).await;
-                            context.add_reactions(&ctx).await;
+                            let mut lock = mutex.lock().await;
+                            lock.render(&context).await;
+                            lock.add_reactions(&context).await;
                         }
                     }
                     Err(reason) => {
@@ -209,14 +209,17 @@ impl EventSubHandler for ConnectFourDiscord {
             }
             "c4 purge" => {
                 for (_id, mutex) in self.games.drain() {
-                    let mut state = mutex.lock().await;
-                    state.finalize(&ctx).await;
+                    let http = context.http.clone();
+                    tokio::spawn(async move {
+                        let mut state = mutex.lock().await;
+                        state.finalize(http).await;
+                    });
                 }
             }
             _ => {}
         }
     }
-    async fn reaction_add(&mut self, ctx: Arc<Context>, add_reaction: Arc<Reaction>) {
+    async fn reaction_add(&mut self, context: Context, add_reaction: Reaction) {
         let id = add_reaction.message_id;
         let mut game_has_ended: bool = false;
 
@@ -231,7 +234,7 @@ impl EventSubHandler for ConnectFourDiscord {
                 game.state == GameState::Playing && reaction_unicode.ends_with("\u{fe0f}\u{20e3}");
 
             if should_respond {
-                if let Err(reason) = add_reaction.delete(&ctx.clone()).await {
+                if let Err(reason) = add_reaction.delete(&context.clone()).await {
                     log::debug!("Could not remove reaction because {:?}", reason);
                 };
 
@@ -250,9 +253,9 @@ impl EventSubHandler for ConnectFourDiscord {
                     all completed, which may use the instance context. */
 
                     log::info!("Game {} has concluded!", id);
-                    state.finalize(&ctx).await;
+                    state.finalize(&context).await;
                 } else {
-                    state.render(&ctx).await;
+                    state.render(&context).await;
                 }
             }
         }
