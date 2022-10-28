@@ -30,7 +30,7 @@ impl Not for Player {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum GameState {
+pub enum GameStatus {
     Closed,
     Playing,
     Won { player: Player },
@@ -39,7 +39,7 @@ pub enum GameState {
 #[derive(Debug, Clone)]
 pub struct ConnectFour {
     pub turn: Player,
-    pub state: GameState,
+    pub state: GameStatus,
     pub board: Board<Player>,
     last_pos_r: i32,
     last_pos_c: i32,
@@ -48,7 +48,7 @@ pub struct ConnectFour {
 impl ConnectFour {
     pub fn new(width: i32, height: i32) -> Self {
         Self {
-            state: GameState::Playing,
+            state: GameStatus::Playing,
             turn: Player::Red,
             board: Board::new(width, height),
             last_pos_r: 0,
@@ -57,7 +57,7 @@ impl ConnectFour {
     }
     pub fn emplace(&mut self, column: i32) -> bool {
         let valid_move =
-            self.state == GameState::Playing && 0 <= column && column < self.board.width();
+            self.state == GameStatus::Playing && 0 <= column && column < self.board.width();
 
         if valid_move {
             for row in (0..self.board.height()).rev() {
@@ -68,12 +68,12 @@ impl ConnectFour {
 
                     if let Some(player) = self.get_winner() {
                         //self.board.fill(winner);  // Cool effect, but obscures the winning move
-                        self.state = GameState::Won { player };
+                        self.state = GameStatus::Won { player };
                     } else if self.board.data().len()
                         == self.board.width() as usize * self.board.height() as usize
                     {
                         // Board is full, but there are no winners. A draw!
-                        self.state = GameState::Closed;
+                        self.state = GameStatus::Closed;
                     }
                     self.turn = !self.turn;
                     return true;
@@ -83,30 +83,28 @@ impl ConnectFour {
         false
     }
     pub fn get_winner(&self) -> Option<Player> {
-        if let GameState::Won { player } = self.state {
+        if let GameStatus::Won { player } = self.state {
             return Some(player);
         }
 
         let row = self.last_pos_r;
         let column = self.last_pos_c;
 
-        // @formatter:off
-        let up_down = self.get_count_in_direction(row, column, Direction::North)
-            + self.get_count_in_direction(row, column, Direction::South)
-            - 1;
+        let up_down = -1
+            + self.get_count_in_direction(row, column, Direction::North)
+            + self.get_count_in_direction(row, column, Direction::South);
 
-        let left_right = self.get_count_in_direction(row, column, Direction::East)
-            + self.get_count_in_direction(row, column, Direction::West)
-            - 1;
+        let left_right = -1
+            + self.get_count_in_direction(row, column, Direction::East)
+            + self.get_count_in_direction(row, column, Direction::West);
 
-        let tl_br = self.get_count_in_direction(row, column, Direction::NorthWest)
-            + self.get_count_in_direction(row, column, Direction::SouthEast)
-            - 1;
+        let tl_br = -1
+            + self.get_count_in_direction(row, column, Direction::NorthWest)
+            + self.get_count_in_direction(row, column, Direction::SouthEast);
 
-        let bl_tr = self.get_count_in_direction(row, column, Direction::SouthWest)
-            + self.get_count_in_direction(row, column, Direction::NorthEast)
-            - 1;
-        // @formatter:on
+        let bl_tr = -1
+            + self.get_count_in_direction(row, column, Direction::SouthWest)
+            + self.get_count_in_direction(row, column, Direction::NorthEast);
 
         let max = up_down.max(left_right).max(tl_br).max(bl_tr);
 
@@ -134,7 +132,7 @@ mod tests {
     use super::super::board::Token;
     use super::*;
 
-    impl std::convert::From<&Token<Player>> for Player {
+    impl From<&Token<Player>> for Player {
         fn from(o: &Token<Player>) -> Self {
             o.value
         }
@@ -143,7 +141,7 @@ mod tests {
     #[test]
     fn test_new_default() {
         let cf = ConnectFour::new(7, 6);
-        assert_eq!(GameState::Playing, cf.state);
+        assert_eq!(GameStatus::Playing, cf.state);
         assert_eq!(Player::Red, cf.turn);
         assert_eq!(7, cf.board.width());
         assert_eq!(6, cf.board.height());
@@ -171,7 +169,7 @@ mod tests {
     #[test]
     fn test_emplace_col0_when_closed() {
         let mut cf = ConnectFour::new(7, 6);
-        cf.state = GameState::Closed;
+        cf.state = GameStatus::Closed;
         assert!(/* returns false */ !cf.emplace(0));
         /*
                0 1 2 3 4 5 6
@@ -324,15 +322,16 @@ mod tests {
         assert!(cf.emplace(0)); // R (4,0)
         assert!(cf.emplace(1)); // B (4,1)
         assert!(cf.emplace(0)); // R (3,0)
-                                /*
-                                       0 1 2 3 4 5 6
-                                    0  - - - - - - -
-                                    1  - - - - - - -
-                                    2  - - - - - - -
-                                    3  R - - - - - -
-                                    4  R B - - - - -
-                                    5  R B - - - - -
-                                */
+
+        /*
+               0 1 2 3 4 5 6
+            0  - - - - - - -
+            1  - - - - - - -
+            2  - - - - - - -
+            3  R - - - - - -
+            4  R B - - - - -
+            5  R B - - - - -
+        */
         assert_eq!(None, cf.get_winner());
     }
 
@@ -347,22 +346,23 @@ mod tests {
         assert!(cf.emplace(0)); // R (3,0)
 
         assert!(cf.emplace(1)); // B (3,1)
-                                /*
-                                       0 1 2 3 4 5 6
-                                    0  - - - - - - -   Red should win here.
-                                    1  - - - - - - -
-                                    2  R - - - - - -
-                                    3  R B - - - - -
-                                    4  R B - - - - -
-                                    5  R B - - - - -
-                                */
+
+        /*
+               0 1 2 3 4 5 6
+            0  - - - - - - -   Red should win here.
+            1  - - - - - - -
+            2  R - - - - - -
+            3  R B - - - - -
+            4  R B - - - - -
+            5  R B - - - - -
+        */
         assert_eq!(None, cf.get_winner());
-        assert_eq!(GameState::Playing, cf.state);
+        assert_eq!(GameStatus::Playing, cf.state);
 
         assert!(cf.emplace(0)); // R (2,0) victory
 
         assert_eq!(
-            GameState::Won {
+            GameStatus::Won {
                 player: Player::Red
             },
             cf.state
@@ -382,24 +382,25 @@ mod tests {
         assert!(cf.emplace(2)); // B (4,2)
         assert!(cf.emplace(4)); // R (5,4)
         assert!(cf.emplace(4)); // B (4,4)
-                                /*
-                                       0 1 2 3 4 5 6
-                                    0  - - - - - - -   Red should win here.
-                                    1  - - - - - - -
-                                    2  - - - - - - -
-                                    3  - - - - - - -
-                                    4  B B B - B - -
-                                    5  R R R R R - -
-                                             ^
-                                             |------- Place last
-                                */
+
+        /*
+               0 1 2 3 4 5 6
+            0  - - - - - - -   Red should win here.
+            1  - - - - - - -
+            2  - - - - - - -
+            3  - - - - - - -
+            4  B B B - B - -
+            5  R R R R R - -
+                     ^
+                     |------- Place last
+        */
         assert_eq!(None, cf.get_winner());
-        assert_eq!(GameState::Playing, cf.state);
+        assert_eq!(GameStatus::Playing, cf.state);
 
         assert!(cf.emplace(3)); // R (5,3) victory
 
         assert_eq!(
-            GameState::Won {
+            GameStatus::Won {
                 player: Player::Red
             },
             cf.state
@@ -412,16 +413,17 @@ mod tests {
         let mut cf = ConnectFour::new(2, 1);
 
         assert!(cf.emplace(0)); // R (0,0)
-                                /*
-                                       0 1
-                                    0  R B  Nobody wins here.
-                                */
+
+        /*
+               0 1
+            0  R B  Nobody wins here.
+        */
         assert_eq!(None, cf.get_winner());
-        assert_eq!(GameState::Playing, cf.state);
+        assert_eq!(GameStatus::Playing, cf.state);
 
         assert!(cf.emplace(1)); // B (0,1) draw
 
-        assert_eq!(GameState::Closed, cf.state);
+        assert_eq!(GameStatus::Closed, cf.state);
         assert_eq!(None, cf.get_winner());
     }
 
@@ -437,22 +439,23 @@ mod tests {
         assert!(cf.emplace(2)); // B (4,2)
         assert!(cf.emplace(4)); // R (5,4)
         assert!(cf.emplace(4)); // B (4,4)
-                                /*
-                                       0 1 2 3 4 5 6
-                                    0  - - - - - - -
-                                    1  - - - - - - -
-                                    2  - - - - - - -
-                                    3  - - - - - - -
-                                    4  B B B X B - -  Blue should be blocked from playing, since red won.
-                                    5  R R R R R - -
-                                */
+
+        /*
+               0 1 2 3 4 5 6
+            0  - - - - - - -
+            1  - - - - - - -
+            2  - - - - - - -
+            3  - - - - - - -
+            4  B B B X B - -  Blue should be blocked from playing, since red won.
+            5  R R R R R - -
+        */
         assert_eq!(None, cf.get_winner());
-        assert_eq!(GameState::Playing, cf.state);
+        assert_eq!(GameStatus::Playing, cf.state);
 
         assert!(cf.emplace(3)); // R (5,3) victory
 
         assert_eq!(
-            GameState::Won {
+            GameStatus::Won {
                 player: Player::Red
             },
             cf.state
@@ -462,7 +465,7 @@ mod tests {
         assert!(/* returns false */ !cf.emplace(3)); // B (4,3) attempt after victory
 
         assert_eq!(
-            GameState::Won {
+            GameStatus::Won {
                 player: Player::Red
             },
             cf.state
@@ -486,6 +489,7 @@ mod tests {
             .set(3, 3, Player::Blue)
             .set(0, 4, Player::Red)
             .set(2, 4, Player::Red);
+
         /*
                0 1 2 3 4
             0  - - R - R

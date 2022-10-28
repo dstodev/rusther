@@ -1,19 +1,13 @@
-use std::sync::Arc;
-
 use serenity::{
     async_trait,
     model::{
         channel::{Message, Reaction},
         event::MessageUpdateEvent,
         gateway::Ready,
-        id::UserId,
     },
     prelude::*,
 };
-use tokio::{
-    runtime::Handle,
-    sync::{broadcast, Mutex},
-};
+use tokio::{runtime::Handle, sync::broadcast};
 
 use crate::rusther::EventSubHandler;
 
@@ -31,14 +25,9 @@ use crate::rusther::EventSubHandler;
 ///
 /// A foundational ability of Arbiter is to provide mutability to event sub-handlers, which is
 /// especially useful for interactions between events over time.
-/// This works by providing interior mutability via Arc<Mutex>.
-///
-/// Atomically-reference-counted (ARC) pointer clones for each sub-handler are distributed to
-/// tasks per event invocation, each pointing to the mutex guarding the event handler.
 pub struct Arbiter {
     tokio_rt_handle: Handle,
     command_prefix: char,
-    user_id: Arc<Mutex<UserId>>,
 
     message_tx: Option<broadcast::Sender<(Context, Message)>>,
     message_update_tx: Option<
@@ -66,7 +55,6 @@ impl Arbiter {
         Self {
             tokio_rt_handle: handle,
             command_prefix: PREFIX,
-            user_id: Arc::new(Mutex::new(UserId::default())),
 
             message_tx: Some(message_tx),
             message_update_tx: Some(message_update_tx),
@@ -77,7 +65,7 @@ impl Arbiter {
     // TODO: Make providing a name optional
     pub fn register_event_handler(
         &mut self,
-        mut handler: impl EventSubHandler + 'static,
+        handler: impl EventSubHandler + 'static,
     ) -> Result<(), String> {
         let mut message_rx = self.message_tx.as_ref().unwrap().subscribe();
         let mut message_update_rx = self.message_update_tx.as_ref().unwrap().subscribe();
@@ -85,7 +73,7 @@ impl Arbiter {
         let mut ready_rx = self.ready_tx.as_ref().unwrap().subscribe();
 
         self.tokio_rt_handle.spawn(async move {
-            // TODO: Loop termination condition
+            let mut handler = handler;
             loop {
                 tokio::select! {
                     Ok((context, message)) = message_rx.recv() => handler.message(context, message).await,
@@ -155,10 +143,6 @@ impl EventHandler for Arbiter {
         }
     }
     async fn ready(&self, context: Context, ready: Ready) {
-        let mut user_id = self.user_id.lock().await;
-        *user_id = ready.user.id;
-        drop(user_id);
-
         if let Some(ready_tx) = &self.ready_tx {
             let _ = ready_tx.send((context, ready));
         }

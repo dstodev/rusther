@@ -8,7 +8,6 @@ use serenity::prelude::*;
 use simple_logger::SimpleLogger;
 use tokio::runtime::Handle;
 
-use commands::ConnectFourDiscord;
 use rusther::Arbiter;
 
 mod commands;
@@ -30,12 +29,7 @@ async fn main() -> Result<(), String> {
     log::debug!("  With debug messages");
     log::trace!("  With trace messages");
 
-    let mut arbiter = Arbiter::new(Handle::current());
-
-    arbiter.register_event_handler(commands::Ping::new())?;
-    arbiter.register_event_handler(commands::Announce)?;
-    arbiter.register_event_handler(ConnectFourDiscord::new())?;
-
+    let arbiter = Arbiter::new(Handle::current()).with_all_commands();
     let token = get_token().unwrap();
 
     let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;

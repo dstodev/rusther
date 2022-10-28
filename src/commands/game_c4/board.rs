@@ -45,7 +45,6 @@ impl<T> Board<T> {
     }
     pub fn get_neighbor(&self, row: i32, column: i32, direction: Direction) -> Option<&Token<T>> {
         let (neighbor_row, neighbor_column) = match direction {
-            // @formatter:off
             Direction::North => (row - 1, column),
             Direction::NorthEast => (row - 1, column + 1),
             Direction::East => (row, column + 1),
@@ -54,7 +53,6 @@ impl<T> Board<T> {
             Direction::SouthWest => (row + 1, column - 1),
             Direction::West => (row, column - 1),
             Direction::NorthWest => (row - 1, column - 1),
-            // @formatter:on
         };
         self.get(neighbor_row, neighbor_column)
     }
