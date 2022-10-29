@@ -1,30 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Direction {
-    North,
-    NorthEast,
-    East,
-    SouthEast,
-    South,
-    SouthWest,
-    West,
-    NorthWest,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Token<T> {
-    pub row: i32,
-    pub column: i32,
-    pub value: T,
-}
-
-impl<T> Token<T> {
-    pub fn new(row: i32, column: i32, value: T) -> Self {
-        Self { row, column, value }
-    }
-}
+use super::{Direction, Token};
 
 #[derive(Clone, Debug)]
 pub struct Board<T> {
@@ -33,7 +10,29 @@ pub struct Board<T> {
     data: HashMap<i32, Token<T>>,
 }
 
+impl<T> Default for Board<T> {
+    fn default() -> Self {
+        Self {
+            width: 0,
+            height: 0,
+            data: HashMap::new(),
+        }
+    }
+}
+
 impl<T> Board<T> {
+    pub fn new(width: i32, height: i32) -> Self {
+        Self {
+            width,
+            height,
+            data: HashMap::new(),
+        }
+    }
+    pub fn set(&mut self, row: i32, column: i32, value: T) -> &mut Self {
+        let index = self.index_from_rc(row, column);
+        self.data.insert(index, Token::new(row, column, value));
+        self
+    }
     pub fn width(&self) -> i32 {
         self.width
     }
@@ -75,13 +74,6 @@ impl<T> Board<T>
 where
     T: Clone,
 {
-    pub fn new(width: i32, height: i32) -> Self {
-        Self {
-            width,
-            height,
-            data: HashMap::new(),
-        }
-    }
     #[allow(dead_code)]
     pub fn fill(&mut self, value: T) {
         for row in 0..self.height {
@@ -89,11 +81,6 @@ where
                 self.set(row, column, value.clone());
             }
         }
-    }
-    pub fn set(&mut self, row: i32, column: i32, value: T) -> &mut Self {
-        let index = self.index_from_rc(row, column);
-        self.data.insert(index, Token::new(row, column, value));
-        self
     }
 }
 

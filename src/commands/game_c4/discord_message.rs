@@ -3,7 +3,7 @@ use serenity::{
     model::channel::{Message, Reaction, ReactionType},
 };
 
-use crate::commands::game_c4::c4::{ConnectFour, GameStatus, Player};
+use super::{ConnectFour, GameStatus, Player};
 use crate::log_scope_time;
 
 #[derive(Debug)]

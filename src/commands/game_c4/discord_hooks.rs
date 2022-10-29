@@ -9,13 +9,9 @@ use serenity::{
     prelude::*,
 };
 
-use crate::{
-    commands::game_c4::{
-        c4::{ConnectFour, GameStatus},
-        discord_message::ConnectFourMessage,
-    },
-    rusther::EventSubHandler,
-};
+use crate::rusther::EventSubHandler;
+
+use super::{ConnectFour, ConnectFourMessage, GameStatus};
 
 pub struct ConnectFourDiscord {
     game_messages: HashMap<MessageId, ConnectFourMessage>,

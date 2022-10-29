@@ -13,9 +13,7 @@ use crate::rusther::EventSubHandler;
 
 /// Arbitrates events to mutable event-(sub)-handlers.
 ///
-/// Arbiter is a core class which accepts Discord events using the Serenity crate. It owns event
-/// input and wraps this input in Arc<> to allow sub-handlers to immutably reference them without
-/// copying them.
+/// Arbiter is a core class which accepts Discord events using the Serenity crate.
 ///
 /// Arbiter has authority over how a Discord event is dispatched to sub-handlers. It moves
 /// data to fit EventSubHandler trait function definitions.

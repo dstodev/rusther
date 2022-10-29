@@ -1,42 +1,8 @@
-use std::fmt::{Display, Formatter};
-use std::ops::Not;
+use super::GameStatus;
+use super::Player;
+use super::{Board, Direction};
 
-use super::board::{Board, Direction};
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Player {
-    Red,
-    Blue,
-}
-
-impl Display for Player {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let say = match self {
-            Self::Red => 'R',
-            Self::Blue => 'B',
-        };
-        write!(f, "{}", say)
-    }
-}
-
-impl Not for Player {
-    type Output = Player;
-    fn not(self) -> Self::Output {
-        match self {
-            Player::Red => Player::Blue,
-            Player::Blue => Player::Red,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum GameStatus {
-    Closed,
-    Playing,
-    Won { player: Player },
-}
-
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct ConnectFour {
     pub turn: Player,
     pub state: GameStatus,
@@ -129,7 +95,7 @@ impl ConnectFour {
 
 #[cfg(test)]
 mod tests {
-    use super::super::board::Token;
+    use super::super::Token;
     use super::*;
 
     impl From<&Token<Player>> for Player {

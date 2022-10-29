@@ -29,7 +29,7 @@ async fn main() -> Result<(), String> {
     log::debug!("  With debug messages");
     log::trace!("  With trace messages");
 
-    let arbiter = Arbiter::new(Handle::current()).with_all_commands();
+    let arbiter = Arbiter::new(Handle::current()).with_all_commands(); // TODO: This only uses one shard (?)
     let token = get_token().unwrap();
 
     let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
