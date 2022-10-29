@@ -29,7 +29,7 @@ impl<T> Board<T> {
         }
     }
     pub fn set(&mut self, row: i32, column: i32, value: T) -> &mut Self {
-        let index = self.index_from_rc(row, column);
+        let index = self.rc_to_index(row, column);
         self.data.insert(index, Token::new(row, column, value));
         self
     }
@@ -59,14 +59,39 @@ impl<T> Board<T> {
         let in_bounds = row >= 0 && row < self.height && column >= 0 && column < self.width;
 
         if in_bounds {
-            let index = self.index_from_rc(row, column);
+            let index = self.rc_to_index(row, column);
             self.data.get(&index)
         } else {
             None
         }
     }
-    fn index_from_rc(&self, row: i32, column: i32) -> i32 {
+    fn rc_to_index(&self, row: i32, column: i32) -> i32 {
         row * self.width + column
+    }
+}
+
+impl<T> Board<T>
+where
+    T: PartialEq,
+{
+    pub fn count_in_direction(&self, row: i32, column: i32, direction: Direction) -> i32 {
+        let mut count = 0;
+
+        if let Some(lhs) = self.get(row, column) {
+            count += 1;
+
+            if let Some(rhs) = self.get_neighbor(row, column, direction) {
+                if rhs.value == lhs.value {
+                    count += self.count_in_direction(rhs.row, rhs.column, direction)
+                }
+            }
+        }
+        count
+    }
+    pub fn count_in_bidirection(&self, row: i32, column: i32, direction: Direction) -> i32 {
+        self.count_in_direction(row, column, direction)
+            + self.count_in_direction(row, column, !direction)
+            - 1 // Both calls add 1 for the token at (row,column)
     }
 }
 
@@ -132,7 +157,7 @@ mod tests {
         assert!(board
             .data
             .iter()
-            .all(|(&k, v)| v.value == 1 && k == board.index_from_rc(v.row, v.column)));
+            .all(|(&k, v)| v.value == 1 && k == board.rc_to_index(v.row, v.column)));
     }
 
     #[test]
@@ -168,7 +193,7 @@ mod tests {
             1  - X -
             2  - - -
         */
-        assert_eq!(4, board.index_from_rc(1, 1));
+        assert_eq!(4, board.rc_to_index(1, 1));
     }
 
     #[test]
@@ -244,5 +269,93 @@ mod tests {
         assert_eq!(None, board.get_neighbor(0, 0, Direction::SouthWest));
         assert_eq!(None, board.get_neighbor(0, 0, Direction::West));
         assert_eq!(None, board.get_neighbor(0, 0, Direction::NorthWest));
+    }
+
+    #[test]
+    fn test_count_in_direction() {
+        #[derive(PartialEq)]
+        enum Player {
+            Red,
+            Blue,
+        }
+
+        let mut board = Board::new(5, 5);
+
+        board
+            .set(2, 1, Player::Red)
+            .set(3, 1, Player::Red)
+            .set(0, 2, Player::Red)
+            .set(1, 2, Player::Red)
+            .set(2, 2, Player::Red)
+            .set(3, 2, Player::Red)
+            .set(1, 3, Player::Red)
+            .set(2, 3, Player::Blue)
+            .set(3, 3, Player::Blue)
+            .set(0, 4, Player::Red)
+            .set(2, 4, Player::Red);
+
+        /*
+               0 1 2 3 4
+            0  - - R - R
+            1  - - R R -
+            2  - R R B R  <-- Test focuses on the center R at (2,2)
+            3  - R R B -
+            4  - - - - -  <-- and at the bottom left (4,0)
+        */
+        assert_eq!(3, board.count_in_direction(2, 2, Direction::North));
+        assert_eq!(3, board.count_in_direction(2, 2, Direction::NorthEast));
+        assert_eq!(1, board.count_in_direction(2, 2, Direction::East));
+        assert_eq!(1, board.count_in_direction(2, 2, Direction::SouthEast));
+        assert_eq!(2, board.count_in_direction(2, 2, Direction::South));
+        assert_eq!(2, board.count_in_direction(2, 2, Direction::SouthWest));
+        assert_eq!(2, board.count_in_direction(2, 2, Direction::West));
+        assert_eq!(1, board.count_in_direction(2, 2, Direction::NorthWest));
+
+        // At the empty bottom-left, facing top-right
+        assert_eq!(0, board.count_in_direction(4, 0, Direction::NorthEast));
+    }
+
+    #[test]
+    fn test_count_in_bidirection() {
+        #[derive(PartialEq)]
+        enum Player {
+            Red,
+            Blue,
+        }
+
+        let mut board = Board::new(5, 5);
+
+        board
+            .set(2, 1, Player::Red)
+            .set(3, 1, Player::Red)
+            .set(0, 2, Player::Red)
+            .set(1, 2, Player::Red)
+            .set(2, 2, Player::Red)
+            .set(3, 2, Player::Red)
+            .set(1, 3, Player::Red)
+            .set(2, 3, Player::Blue)
+            .set(3, 3, Player::Blue)
+            .set(0, 4, Player::Red)
+            .set(2, 4, Player::Red);
+
+        /*
+               0 1 2 3 4
+            0  - - R - R
+            1  - - R R -
+            2  - R R B R  <-- Test focuses on the center R at (2,2)
+            3  - R R B -
+            4  - - - - -  <-- and at the bottom left (4,0)
+        */
+        assert_eq!(4, board.count_in_bidirection(2, 2, Direction::North));
+        assert_eq!(4, board.count_in_bidirection(2, 2, Direction::NorthEast));
+        assert_eq!(2, board.count_in_bidirection(2, 2, Direction::East));
+        assert_eq!(1, board.count_in_bidirection(2, 2, Direction::SouthEast));
+        assert_eq!(4, board.count_in_bidirection(2, 2, Direction::South));
+        assert_eq!(4, board.count_in_bidirection(2, 2, Direction::SouthWest));
+        assert_eq!(2, board.count_in_bidirection(2, 2, Direction::West));
+        assert_eq!(1, board.count_in_bidirection(2, 2, Direction::NorthWest));
+
+        // At the empty bottom-left, facing top-right
+        assert_eq!(0, board.count_in_direction(4, 0, Direction::NorthEast));
     }
 }

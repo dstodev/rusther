@@ -1,13 +1,9 @@
 #[allow(unused_imports)]
-// This file exposes mutable, borrowed values from serenity::client::EventHandler method signatures
-// when the serenity cache feature is disabled.
 use serenity::{
     async_trait,
     model::{channel::Message, channel::Reaction, event::MessageUpdateEvent, gateway::Ready},
     prelude::*,
 };
-
-// Link for convenience
 
 #[async_trait]
 pub trait EventSubHandler: Sync + Send {

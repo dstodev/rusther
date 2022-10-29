@@ -19,7 +19,7 @@ use crate::rusther::EventSubHandler;
 /// data to fit EventSubHandler trait function definitions.
 ///
 /// For every Discord event to be supported, an analogue Arbiter method must exist. Its role
-/// is to dispatch each sub-handler, ideally as individual tasks.
+/// is to dispatch arguments to each sub-handler, which ideally are individual tasks.
 ///
 /// A foundational ability of Arbiter is to provide mutability to event sub-handlers, which is
 /// especially useful for interactions between events over time.

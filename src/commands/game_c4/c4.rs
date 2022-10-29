@@ -56,40 +56,29 @@ impl ConnectFour {
         let row = self.last_pos_r;
         let column = self.last_pos_c;
 
-        let up_down = -1
-            + self.get_count_in_direction(row, column, Direction::North)
-            + self.get_count_in_direction(row, column, Direction::South);
+        let n_s = self
+            .board
+            .count_in_bidirection(row, column, Direction::North);
 
-        let left_right = -1
-            + self.get_count_in_direction(row, column, Direction::East)
-            + self.get_count_in_direction(row, column, Direction::West);
+        let ne_sw = self
+            .board
+            .count_in_bidirection(row, column, Direction::NorthEast);
 
-        let tl_br = -1
-            + self.get_count_in_direction(row, column, Direction::NorthWest)
-            + self.get_count_in_direction(row, column, Direction::SouthEast);
+        let e_w = self
+            .board
+            .count_in_bidirection(row, column, Direction::East);
 
-        let bl_tr = -1
-            + self.get_count_in_direction(row, column, Direction::SouthWest)
-            + self.get_count_in_direction(row, column, Direction::NorthEast);
+        let se_nw = self
+            .board
+            .count_in_bidirection(row, column, Direction::NorthWest);
 
-        let max = up_down.max(left_right).max(tl_br).max(bl_tr);
+        let max = n_s.max(ne_sw).max(e_w).max(se_nw);
 
         if max >= 4 {
             Some(self.turn)
         } else {
             None
         }
-    }
-    fn get_count_in_direction(&self, row: i32, column: i32, direction: Direction) -> i32 {
-        if let Some(lhs) = self.board.get(row, column) {
-            if let Some(rhs) = self.board.get_neighbor(row, column, direction) {
-                if lhs.value == rhs.value {
-                    return 1 + self.get_count_in_direction(rhs.row, rhs.column, direction);
-                }
-            }
-            return 1;
-        }
-        return 0;
     }
 }
 
@@ -437,40 +426,5 @@ mod tests {
             cf.state
         );
         assert_eq!(Some(Player::Red), cf.get_winner());
-    }
-
-    #[test]
-    fn test_get_count_in_direction() {
-        let mut cf = ConnectFour::new(7, 6);
-
-        cf.board
-            .set(2, 1, Player::Red)
-            .set(3, 1, Player::Red)
-            .set(0, 2, Player::Red)
-            .set(1, 2, Player::Red)
-            .set(2, 2, Player::Red)
-            .set(3, 2, Player::Red)
-            .set(1, 3, Player::Red)
-            .set(2, 3, Player::Blue)
-            .set(3, 3, Player::Blue)
-            .set(0, 4, Player::Red)
-            .set(2, 4, Player::Red);
-
-        /*
-               0 1 2 3 4
-            0  - - R - R
-            1  - - R R -
-            2  - R R B R  <-- Note single BLUE piece on this line at (2,3)
-            3  - R R B -  <-- and here at (3,3)
-            4  - - - - -
-        */
-        assert_eq!(3, cf.get_count_in_direction(2, 2, Direction::North));
-        assert_eq!(3, cf.get_count_in_direction(2, 2, Direction::NorthEast));
-        assert_eq!(1, cf.get_count_in_direction(2, 2, Direction::East));
-        assert_eq!(1, cf.get_count_in_direction(2, 2, Direction::SouthEast));
-        assert_eq!(2, cf.get_count_in_direction(2, 2, Direction::South));
-        assert_eq!(2, cf.get_count_in_direction(2, 2, Direction::SouthWest));
-        assert_eq!(2, cf.get_count_in_direction(2, 2, Direction::West));
-        assert_eq!(1, cf.get_count_in_direction(2, 2, Direction::NorthWest));
     }
 }
