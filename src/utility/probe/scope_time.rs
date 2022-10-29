@@ -1,54 +1,134 @@
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-pub struct ScopeTime<'a> {
-	origin: Instant,
-	on_drop: Box<dyn FnMut(Duration) + 'a>,
+pub trait Callback: FnOnce(Instant, Instant) {}
+
+impl<T> Callback for T where T: FnOnce(Instant, Instant) {}
+
+struct ScopeTimeState<F>
+where
+    F: Callback,
+{
+    start: Instant,
+    on_drop: F,
 }
 
-impl<'a> ScopeTime<'a> {
-	pub fn new(on_destroy: impl FnMut(Duration) + 'a) -> Self {
-		Self {
-			origin: Instant::now(),
-			on_drop: Box::new(on_destroy),
-		}
-	}
+pub struct ScopeTime<F>
+where
+    F: Callback,
+{
+    state: Option<ScopeTimeState<F>>,
 }
 
-impl<'a> Drop for ScopeTime<'a> {
-	fn drop(&mut self) {
-		(self.on_drop)(self.origin.elapsed());
-	}
+impl<F> ScopeTime<F>
+where
+    F: Callback,
+{
+    #[must_use]
+    pub fn new(on_drop: F) -> Self {
+        Self {
+            state: Some(ScopeTimeState {
+                start: Instant::now(),
+                on_drop,
+            }),
+        }
+    }
+}
+
+impl<F> Drop for ScopeTime<F>
+where
+    F: Callback,
+{
+    fn drop(&mut self) {
+        let end = Instant::now();
+        if let Some(state) = self.state.take() {
+            (state.on_drop)(state.start, end);
+        }
+    }
+}
+
+// https://doc.rust-lang.org/rust-by-example/macros.html
+#[macro_export]
+macro_rules! log_scope_time {
+    () => {
+        log_scope_time!("Probe");
+    };
+    ($prefix:expr) => {
+        let _time = crate::utility::ScopeTime::new(|start, end| {
+            log::info!("{} duration: {:?}", $prefix, end - start)
+        });
+    };
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use tokio::runtime::Builder;
+    use std::time::Duration;
 
-	#[test]
-	fn test_probe_scope() {
-		let mut duration = Duration::new(0, 0);
-		{
-			ScopeTime::new(|d| duration = d);
-			std::thread::sleep(Duration::new(0, 1));  // Sleep for 1 nanosecond
-		}
-		assert!(duration > Duration::new(0, 0));
-	}
+    use rand::Rng;
+    use tokio::runtime::Builder;
 
-	#[test]
-	fn test_probe_async_scope() {
-		let mut duration = Duration::new(0, 0);
+    use super::*;
 
-		let runtime = Builder::new_multi_thread()
-			.enable_all()
-			.build()
-			.unwrap();
+    macro_rules! jitter {
+        () => {
+            for _ in 0..rand::thread_rng().gen_range(0..1000) {
+                loop {
+                    if rand::random() {
+                        break;
+                    }
+                }
+            }
+        };
+    }
 
-		runtime.block_on(async {
-			ScopeTime::new(|d| duration = d);
-			tokio::time::sleep(Duration::new(0, 1)).await;
-		});
+    const ITERATIONS: usize = 15;
 
-		assert!(duration > Duration::new(0, 0));
-	}
+    #[test]
+    fn test_probe_scope() {
+        for _ in 0..ITERATIONS {
+            jitter!();
+
+            let mut scope_start = Instant::now();
+            let mut scope_end = scope_start.clone();
+
+            std::thread::sleep(Duration::from_nanos(1));
+
+            let before_scope = Instant::now();
+            {
+                let _probe = ScopeTime::new(|start, end| {
+                    scope_start = start;
+                    scope_end = end;
+                });
+                std::thread::sleep(Duration::from_nanos(1));
+            }
+
+            assert!(scope_start >= before_scope);
+            assert!(scope_end > scope_start);
+
+            let delta = scope_end - scope_start;
+            assert!(delta >= Duration::from_nanos(1));
+        }
+    }
+
+    #[test]
+    fn test_probe_async_scope() {
+        let mut duration = Duration::new(0, 0);
+
+        let runtime = Builder::new_multi_thread().enable_all().build().unwrap();
+
+        for _ in 0..ITERATIONS {
+            jitter!();
+
+            runtime.block_on(async {
+                let _probe = ScopeTime::new(|start, end| {
+                    duration = end - start;
+                });
+                tokio::time::sleep(Duration::from_nanos(1)).await;
+            });
+            assert!(
+                duration >= Duration::from_nanos(1),
+                "duration was {:#?}",
+                duration
+            );
+        }
+    }
 }
