@@ -70,11 +70,14 @@ mod tests {
 
     macro_rules! jitter {
         () => {
-            for _ in 0..rand::thread_rng().gen_range(0..1000) {
+            // For some number of iterations between 100 and 1000...
+            for _ in 0..rand::thread_rng().gen_range(100..1000) {
+                // ... loop indefinitely ...
                 loop {
+                    // ... until randomly choose to break.
                     if rand::random() {
                         break;
-                    }
+                    };
                 }
             }
         };
