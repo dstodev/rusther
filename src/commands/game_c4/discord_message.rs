@@ -67,10 +67,7 @@ impl DiscordMessage {
                 self.get_player_label(&Some(*game.turn()))
             )
         } else {
-            format!(
-                "> {} player wins!\n",
-                self.get_player_label(&game.get_winner())
-            )
+            format!("> {} wins!\n", self.get_player_label(&game.get_winner()))
         };
     }
     fn get_player_label(&self, player: &Option<Player>) -> String {
