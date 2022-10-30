@@ -37,14 +37,14 @@ impl ConnectFour for ConnectFour1p {
         if !self.game.emplace(column) {
             return false;
         }
-        if self.game.state() == GameStatus::Playing {
+        if self.state() == GameStatus::Playing {
             if let Some(mut bot) = self.bot.take() {
                 let decision = bot.choose_column(self.board(), *self.turn());
                 self.bot = Some(bot);
 
                 // ... then emplace bot's decision
                 if !self.game.emplace(decision) {
-                    self.game.close();
+                    self.close();
                     log::warn!("C4 bot made invalid decision!");
                 }
             }
@@ -90,28 +90,28 @@ mod tests {
             5  R R R R - - -
         */
         assert!(cf.emplace(0));
-        assert_eq!(Player::Red, cf.game.board().get(5, 0).unwrap().into());
-        assert_eq!(Player::Blue, cf.game.board().get(4, 0).unwrap().into());
-        assert_eq!(2, cf.game.board().data().len());
-        assert_eq!(&Player::Red, cf.game.turn());
+        assert_eq!(Player::Red, cf.board().get(5, 0).unwrap().into());
+        assert_eq!(Player::Blue, cf.board().get(4, 0).unwrap().into());
+        assert_eq!(2, cf.board().data().len());
+        assert_eq!(&Player::Red, cf.turn());
 
         assert!(cf.emplace(1));
-        assert_eq!(Player::Red, cf.game.board().get(5, 1).unwrap().into());
-        assert_eq!(Player::Blue, cf.game.board().get(4, 1).unwrap().into());
+        assert_eq!(Player::Red, cf.board().get(5, 1).unwrap().into());
+        assert_eq!(Player::Blue, cf.board().get(4, 1).unwrap().into());
 
         assert!(cf.emplace(2));
-        assert_eq!(Player::Red, cf.game.board().get(5, 2).unwrap().into());
-        assert_eq!(Player::Blue, cf.game.board().get(4, 2).unwrap().into());
+        assert_eq!(Player::Red, cf.board().get(5, 2).unwrap().into());
+        assert_eq!(Player::Blue, cf.board().get(4, 2).unwrap().into());
 
         assert!(cf.emplace(3));
-        assert_eq!(Player::Red, cf.game.board().get(5, 3).unwrap().into());
-        assert_eq!(None, cf.game.board().get(4, 3));
+        assert_eq!(Player::Red, cf.board().get(5, 3).unwrap().into());
+        assert_eq!(None, cf.board().get(4, 3));
 
         assert_eq!(
             GameStatus::Won {
                 player: Player::Red
             },
-            cf.game.state()
+            cf.state()
         );
         assert_eq!(Some(Player::Red), cf.get_winner());
     }
@@ -130,32 +130,32 @@ mod tests {
             5  R R R B R - -
         */
         assert!(cf.emplace(0));
-        assert_eq!(Player::Red, cf.game.board().get(5, 0).unwrap().into());
-        assert_eq!(Player::Blue, cf.game.board().get(4, 0).unwrap().into());
-        assert_eq!(2, cf.game.board().data().len());
-        assert_eq!(&Player::Red, cf.game.turn());
+        assert_eq!(Player::Red, cf.board().get(5, 0).unwrap().into());
+        assert_eq!(Player::Blue, cf.board().get(4, 0).unwrap().into());
+        assert_eq!(2, cf.board().data().len());
+        assert_eq!(&Player::Red, cf.turn());
 
         assert!(cf.emplace(1));
-        assert_eq!(Player::Red, cf.game.board().get(5, 1).unwrap().into());
-        assert_eq!(Player::Blue, cf.game.board().get(4, 1).unwrap().into());
+        assert_eq!(Player::Red, cf.board().get(5, 1).unwrap().into());
+        assert_eq!(Player::Blue, cf.board().get(4, 1).unwrap().into());
 
         assert!(cf.emplace(2));
-        assert_eq!(Player::Red, cf.game.board().get(5, 2).unwrap().into());
-        assert_eq!(Player::Blue, cf.game.board().get(4, 2).unwrap().into());
+        assert_eq!(Player::Red, cf.board().get(5, 2).unwrap().into());
+        assert_eq!(Player::Blue, cf.board().get(4, 2).unwrap().into());
 
         assert!(cf.emplace(4));
-        assert_eq!(Player::Red, cf.game.board().get(5, 4).unwrap().into());
-        assert_eq!(Player::Blue, cf.game.board().get(5, 3).unwrap().into());
+        assert_eq!(Player::Red, cf.board().get(5, 4).unwrap().into());
+        assert_eq!(Player::Blue, cf.board().get(5, 3).unwrap().into());
 
         assert!(cf.emplace(4));
-        assert_eq!(Player::Red, cf.game.board().get(4, 4).unwrap().into());
-        assert_eq!(Player::Blue, cf.game.board().get(4, 3).unwrap().into());
+        assert_eq!(Player::Red, cf.board().get(4, 4).unwrap().into());
+        assert_eq!(Player::Blue, cf.board().get(4, 3).unwrap().into());
 
         assert_eq!(
             GameStatus::Won {
                 player: Player::Blue
             },
-            cf.game.state()
+            cf.state()
         );
         assert_eq!(Some(Player::Blue), cf.get_winner());
     }
@@ -169,14 +169,14 @@ mod tests {
             0  R B - - - - -
         */
         assert!(cf.emplace(0));
-        assert_eq!(Player::Red, cf.game.board().get(0, 0).unwrap().into());
-        assert_eq!(Player::Blue, cf.game.board().get(0, 1).unwrap().into());
-        assert_eq!(2, cf.game.board().data().len());
+        assert_eq!(Player::Red, cf.board().get(0, 0).unwrap().into());
+        assert_eq!(Player::Blue, cf.board().get(0, 1).unwrap().into());
+        assert_eq!(2, cf.board().data().len());
 
         assert!(/* returns false */ !cf.emplace(0));
-        assert_eq!(&Player::Red, cf.game.turn()); // Still red's turn
-        assert_eq!(2, cf.game.board().data().len()); // Board has not changed
-        assert_eq!(GameStatus::Playing, cf.game.state()); // Game is still active
+        assert_eq!(&Player::Red, cf.turn()); // Still red's turn
+        assert_eq!(2, cf.board().data().len()); // Board has not changed
+        assert_eq!(GameStatus::Playing, cf.state()); // Game is still active
     }
 
     #[test]
@@ -188,6 +188,7 @@ mod tests {
             0  R - - - - - -
         */
         assert!(cf.emplace(0));
-        assert_eq!(GameStatus::Closed, cf.game.state()); // Game entered an invalid state so is closed
+        assert_eq!(GameStatus::Closed, cf.state()); // Game entered an invalid state so is closed
+        assert_eq!(None, cf.get_winner());
     }
 }
