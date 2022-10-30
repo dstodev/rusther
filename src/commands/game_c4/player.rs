@@ -1,5 +1,7 @@
-use std::fmt::{Display, Formatter};
-use std::ops::Not;
+use std::{
+    fmt::{Display, Formatter},
+    ops::Not,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Player {
