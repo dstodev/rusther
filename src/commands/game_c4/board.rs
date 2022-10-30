@@ -1,9 +1,11 @@
-use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
+use std::{
+    collections::HashMap,
+    fmt::{Display, Formatter},
+};
 
 use super::{Direction, Token};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Board<T> {
     width: i32,
     height: i32,
@@ -271,14 +273,14 @@ mod tests {
         assert_eq!(None, board.get_neighbor(0, 0, Direction::NorthWest));
     }
 
+    #[derive(PartialEq)]
+    enum Player {
+        Red,
+        Blue,
+    }
+
     #[test]
     fn test_count_in_direction() {
-        #[derive(PartialEq)]
-        enum Player {
-            Red,
-            Blue,
-        }
-
         let mut board = Board::new(5, 5);
 
         board
@@ -317,12 +319,6 @@ mod tests {
 
     #[test]
     fn test_count_in_bidirection() {
-        #[derive(PartialEq)]
-        enum Player {
-            Red,
-            Blue,
-        }
-
         let mut board = Board::new(5, 5);
 
         board

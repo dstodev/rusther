@@ -7,6 +7,12 @@ pub enum Player {
     Blue,
 }
 
+impl Default for Player {
+    fn default() -> Self {
+        Player::Red
+    }
+}
+
 impl Display for Player {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let say = match self {

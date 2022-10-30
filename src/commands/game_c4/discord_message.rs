@@ -3,18 +3,18 @@ use serenity::{
     model::channel::{Message, Reaction, ReactionType},
 };
 
-use super::{ConnectFour, GameStatus, Player};
 use crate::log_scope_time;
 
-#[derive(Debug)]
-pub struct ConnectFourMessage {
-    pub game: ConnectFour,
+use super::{ConnectFour, GameStatus, Player};
+
+pub struct DiscordMessage {
+    pub game: Box<dyn ConnectFour + Send + Sync>,
     message: Message,
     reactions: Vec<Reaction>,
 }
 
-impl ConnectFourMessage {
-    pub fn new(game: ConnectFour, message: Message) -> Self {
+impl DiscordMessage {
+    pub fn new(game: Box<dyn ConnectFour + Send + Sync + 'static>, message: Message) -> Self {
         Self {
             game,
             message,
@@ -23,8 +23,8 @@ impl ConnectFourMessage {
     }
 }
 
-impl ConnectFourMessage {
-    pub(crate) async fn render(&mut self, http: impl CacheHttp) {
+impl DiscordMessage {
+    pub async fn render(&mut self, http: impl CacheHttp) {
         log_scope_time!("Render");
 
         let say = self.get_render_string();
@@ -48,10 +48,10 @@ impl ConnectFourMessage {
     fn get_header_string(&self) -> String {
         let game = &self.game;
 
-        return if game.state == GameStatus::Playing {
+        return if game.state() == GameStatus::Playing {
             format!(
                 "> Current turn: {}\n",
-                Self::get_player_label(&Some(game.turn))
+                Self::get_player_label(&Some(*game.turn()))
             )
         } else {
             format!(
@@ -82,8 +82,8 @@ impl ConnectFourMessage {
         let game = &self.game;
         let mut axis = String::new();
 
-        if game.state == GameStatus::Playing {
-            for column in 0..game.board.width() {
+        if game.state() == GameStatus::Playing {
+            for column in 0..game.board().width() {
                 axis += &Self::get_reaction_string_for_column(column);
                 axis += " ";
             }
@@ -95,9 +95,9 @@ impl ConnectFourMessage {
         let game = &self.game;
         let mut board = String::new();
 
-        for row in 0..game.board.height() {
-            for column in 0..game.board.width() {
-                let player = match game.board.get(row, column) {
+        for row in 0..game.board().height() {
+            for column in 0..game.board().width() {
+                let player = match game.board().get(row, column) {
                     Some(v) => Some(v.value),
                     None => None,
                 };
@@ -108,8 +108,8 @@ impl ConnectFourMessage {
         }
         board
     }
-    pub(crate) async fn add_reactions(&mut self, http: impl CacheHttp) {
-        let width = self.game.board.width();
+    pub async fn add_reactions(&mut self, http: impl CacheHttp) {
+        let width = self.game.board().width();
         let message = &self.message;
         let reaction_cache = &mut self.reactions;
 
@@ -133,10 +133,10 @@ impl ConnectFourMessage {
         // see: https://unicode.org/emoji/charts-12.0/full-emoji-list.html#0030_fe0f_20e3
         format!("{}\u{fe0f}\u{20e3}", column)
     }
-    pub(crate) async fn finalize(&mut self, http: impl CacheHttp) {
+    pub async fn finalize(&mut self, http: impl CacheHttp) {
         // If a player has won, do not override the game state to closed i.e. 'draw'.
-        if self.game.state == GameStatus::Playing {
-            self.game.state = GameStatus::Closed;
+        if self.game.state() == GameStatus::Playing {
+            self.game.close();
         }
         self.render(&http).await;
         let _ = self.message.delete_reactions(&http).await;

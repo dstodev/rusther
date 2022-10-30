@@ -11,10 +11,10 @@ use serenity::{
 
 use crate::rusther::EventSubHandler;
 
-use super::{ConnectFour, ConnectFourMessage, GameStatus};
+use super::{ConnectFour, ConnectFour1p, ConnectFour2p, DiscordMessage, GameStatus};
 
 pub struct ConnectFourDiscord {
-    game_messages: HashMap<MessageId, ConnectFourMessage>,
+    game_messages: HashMap<MessageId, DiscordMessage>,
 }
 
 impl ConnectFourDiscord {
@@ -28,30 +28,11 @@ impl ConnectFourDiscord {
 #[async_trait]
 impl EventSubHandler for ConnectFourDiscord {
     async fn message(&mut self, context: Context, message: Message) {
-        //tokio::spawn(async move {
+        let mut game_to_start: Option<Box<dyn ConnectFour + Send + Sync + 'static>> = None;
+
         match message.content.as_str() {
-            "c4 start" => {
-                let say = ":anchor:";
-
-                match message.channel_id.say(&context, say).await {
-                    Ok(message) => {
-                        let id = message.id;
-                        let game = ConnectFour::new(7, 6);
-                        let state = ConnectFourMessage::new(game, message);
-
-                        if self.game_messages.insert(id, state).is_some() {
-                            log::debug!("Hashmap key collision!");
-                        }
-                        if let Some(message) = self.game_messages.get_mut(&id) {
-                            message.render(&context).await;
-                            message.add_reactions(&context).await;
-                        }
-                    }
-                    Err(reason) => {
-                        log::debug!("Could not send anchor message because {:?}", reason)
-                    }
-                }
-            }
+            "c4 start" => game_to_start = Some(Box::new(ConnectFour2p::new(7, 6))),
+            "c4 start random" => game_to_start = Some(Box::new(ConnectFour1p::new(7, 6, None))),
             "c4 purge" => {
                 for (_id, mut game) in self.game_messages.drain() {
                     let http = context.http.clone();
@@ -60,17 +41,37 @@ impl EventSubHandler for ConnectFourDiscord {
             }
             _ => {}
         }
-        //});
+
+        if let Some(game) = game_to_start {
+            let say = ":anchor:";
+
+            match message.channel_id.say(&context, say).await {
+                Ok(message) => {
+                    let id = message.id;
+                    let state = DiscordMessage::new(game, message);
+
+                    if self.game_messages.insert(id, state).is_some() {
+                        log::debug!("Hashmap key collision!");
+                    }
+                    if let Some(message) = self.game_messages.get_mut(&id) {
+                        message.render(&context).await;
+                        message.add_reactions(&context).await;
+                    }
+                }
+                Err(reason) => {
+                    log::debug!("Could not send anchor message because {:?}", reason)
+                }
+            }
+        }
     }
     async fn reaction_add(&mut self, context: Context, reaction: Reaction) {
-        //tokio::spawn(async move {
         let id = reaction.message_id;
         let mut game_has_ended = false;
 
         if let Some(message) = self.game_messages.get_mut(&id) {
             let reaction_unicode = reaction.emoji.as_data();
 
-            let should_respond = message.game.state == GameStatus::Playing
+            let should_respond = message.game.state() == GameStatus::Playing
                 && reaction_unicode.ends_with("\u{fe0f}\u{20e3}");
 
             if should_respond {
@@ -80,7 +81,8 @@ impl EventSubHandler for ConnectFourDiscord {
 
                 let column = reaction_unicode.as_bytes()[0] - 0x30;
 
-                if message.game.emplace(column.into()) && message.game.state != GameStatus::Playing
+                if message.game.emplace(column.into())
+                    && message.game.state() != GameStatus::Playing
                 {
                     game_has_ended = true;
                 }
@@ -97,6 +99,5 @@ impl EventSubHandler for ConnectFourDiscord {
                 }
             }
         }
-        //});
     }
 }

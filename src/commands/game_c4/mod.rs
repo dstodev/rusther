@@ -1,16 +1,22 @@
 use board::Board;
+use bot_player::BotPlayer;
+use bot_random::RandomPlayer;
 use c4::ConnectFour;
+use c4_1p::ConnectFour1p;
+use c4_2p::ConnectFour2p;
 use direction::Direction;
 pub use discord_hooks::ConnectFourDiscord;
-use discord_message::ConnectFourMessage;
+use discord_message::DiscordMessage;
 use game_status::GameStatus;
 use player::Player;
 use token::Token;
 
 mod board;
 mod bot_player;
-mod bot_player_auto;
+mod bot_random;
 mod c4;
+mod c4_1p;
+mod c4_2p;
 mod direction;
 mod discord_hooks;
 mod discord_message;
