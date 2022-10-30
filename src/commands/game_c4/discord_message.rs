@@ -83,7 +83,7 @@ impl DiscordMessage {
                     TwoPlayer => "Blue",
                     OnePlayer => "Bot",
                 },
-                None => "No", // becomes e.g. "No player wins!"
+                None => "Nobody", // becomes e.g. "Nobody wins!"
             }
         )
     }

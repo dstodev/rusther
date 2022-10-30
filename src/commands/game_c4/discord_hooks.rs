@@ -29,12 +29,12 @@ impl ConnectFourDiscord {
 #[async_trait]
 impl EventSubHandler for ConnectFourDiscord {
     async fn message(&mut self, context: Context, message: Message) {
-        let mut game_to_start: Option<Box<dyn ConnectFour + Send + Sync + 'static>> = None;
+        let mut game_to_start: Option<Box<dyn ConnectFour + Send + Sync>> = None;
         let mut mode = InteractionMode::TwoPlayer;
 
         match message.content.as_str() {
             "c4 start" => game_to_start = Some(Box::new(ConnectFour2p::new(7, 6))),
-            "c4 start random" => {
+            "c4 start random" | "c4 random" => {
                 mode = InteractionMode::OnePlayer;
                 game_to_start = Some(Box::new(ConnectFour1p::new(7, 6, None)));
             }
