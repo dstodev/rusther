@@ -9,6 +9,7 @@ use serenity::{
     prelude::*,
 };
 
+use crate::commands::game_c4::discord_message::InteractionMode;
 use crate::rusther::EventSubHandler;
 
 use super::{ConnectFour, ConnectFour1p, ConnectFour2p, DiscordMessage, GameStatus};
@@ -29,10 +30,14 @@ impl ConnectFourDiscord {
 impl EventSubHandler for ConnectFourDiscord {
     async fn message(&mut self, context: Context, message: Message) {
         let mut game_to_start: Option<Box<dyn ConnectFour + Send + Sync + 'static>> = None;
+        let mut mode = InteractionMode::TwoPlayer;
 
         match message.content.as_str() {
             "c4 start" => game_to_start = Some(Box::new(ConnectFour2p::new(7, 6))),
-            "c4 start random" => game_to_start = Some(Box::new(ConnectFour1p::new(7, 6, None))),
+            "c4 start random" => {
+                mode = InteractionMode::OnePlayer;
+                game_to_start = Some(Box::new(ConnectFour1p::new(7, 6, None)));
+            }
             "c4 purge" => {
                 for (_id, mut game) in self.game_messages.drain() {
                     let http = context.http.clone();
@@ -48,7 +53,7 @@ impl EventSubHandler for ConnectFourDiscord {
             match message.channel_id.say(&context, say).await {
                 Ok(message) => {
                     let id = message.id;
-                    let state = DiscordMessage::new(game, message);
+                    let state = DiscordMessage::new(game, message, mode);
 
                     if self.game_messages.insert(id, state).is_some() {
                         log::debug!("Hashmap key collision!");

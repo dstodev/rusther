@@ -3,21 +3,34 @@ use serenity::{
     model::channel::{Message, Reaction, ReactionType},
 };
 
+use crate::commands::game_c4::discord_message::InteractionMode::{OnePlayer, TwoPlayer};
 use crate::log_scope_time;
 
 use super::{ConnectFour, GameStatus, Player};
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum InteractionMode {
+    OnePlayer,
+    TwoPlayer,
+}
+
 pub struct DiscordMessage {
     pub game: Box<dyn ConnectFour + Send + Sync>,
     message: Message,
+    mode: InteractionMode,
     reactions: Vec<Reaction>,
 }
 
 impl DiscordMessage {
-    pub fn new(game: Box<dyn ConnectFour + Send + Sync + 'static>, message: Message) -> Self {
+    pub fn new(
+        game: Box<dyn ConnectFour + Send + Sync + 'static>,
+        message: Message,
+        mode: InteractionMode,
+    ) -> Self {
         Self {
             game,
             message,
+            mode,
             reactions: Vec::new(),
         }
     }
@@ -51,30 +64,42 @@ impl DiscordMessage {
         return if game.state() == GameStatus::Playing {
             format!(
                 "> Current turn: {}\n",
-                Self::get_player_label(&Some(*game.turn()))
+                self.get_player_label(&Some(*game.turn()))
             )
         } else {
             format!(
                 "> {} player wins!\n",
-                Self::get_player_label(&game.get_winner())
+                self.get_player_label(&game.get_winner())
             )
         };
     }
-    fn get_player_label(player: &Option<Player>) -> String {
+    fn get_player_label(&self, player: &Option<Player>) -> String {
         format!(
             "{} {}",
-            Self::get_player_token(player),
+            self.get_player_token(player),
             match player {
-                Some(Player::Red) => "Red",
-                Some(Player::Blue) => "Blue",
+                Some(Player::Red) => match self.mode {
+                    TwoPlayer => "Red",
+                    OnePlayer => "Player",
+                },
+                Some(Player::Blue) => match self.mode {
+                    TwoPlayer => "Blue",
+                    OnePlayer => "Bot",
+                },
                 None => "No", // becomes e.g. "No player wins!"
             }
         )
     }
-    fn get_player_token(player: &Option<Player>) -> &'static str {
+    fn get_player_token(&self, player: &Option<Player>) -> &'static str {
         match player {
-            Some(Player::Red) => ":red_circle:",
-            Some(Player::Blue) => ":blue_circle:",
+            Some(Player::Red) => match self.mode {
+                TwoPlayer => ":red_circle:",
+                OnePlayer => ":orange_circle:",
+            },
+            Some(Player::Blue) => match self.mode {
+                TwoPlayer => ":blue_circle:",
+                OnePlayer => ":purple_circle:",
+            },
             None => ":black_circle:",
         }
     }
@@ -101,7 +126,7 @@ impl DiscordMessage {
                     Some(v) => Some(v.value),
                     None => None,
                 };
-                board += Self::get_player_token(&player);
+                board += self.get_player_token(&player);
                 board += " ";
             }
             board += "\n";
