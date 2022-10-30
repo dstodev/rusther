@@ -27,7 +27,7 @@ mod tests {
         for _ in 0..10 {
             let mut board = Board::<Player>::new(10, 1);
             /*
-                   0 1 2 3  4 5 6 7 8 9
+                   0 1 2 3 4 5 6 7 8 9
                 0  - - - - - - - - - -
             */
             for _ in 0..10 {
