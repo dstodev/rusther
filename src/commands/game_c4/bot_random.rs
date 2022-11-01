@@ -32,7 +32,7 @@ mod tests {
             */
             for _ in 0..10 {
                 let decision = player.choose_column(&board, Player::Red);
-                assert!(!board.data().contains_key(&decision));
+                assert_eq!(false, board.data().contains_key(&decision));
                 board.set(0, decision, Player::Red);
             }
         }

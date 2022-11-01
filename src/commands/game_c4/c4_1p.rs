@@ -173,7 +173,7 @@ mod tests {
         assert_eq!(Player::Blue, cf.board().get(0, 1).unwrap().into());
         assert_eq!(2, cf.board().data().len());
 
-        assert!(/* returns false */ !cf.emplace(0));
+        assert_eq!(false, cf.emplace(0));
         assert_eq!(&Player::Red, cf.turn()); // Still red's turn
         assert_eq!(2, cf.board().data().len()); // Board has not changed
         assert_eq!(GameStatus::Playing, cf.state()); // Game is still active

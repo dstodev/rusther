@@ -138,7 +138,7 @@ mod tests {
     fn test_emplace_col0_when_closed() {
         let mut cf = ConnectFour2p::new(7, 6);
         cf.state = GameStatus::Closed;
-        assert!(/* returns false */ !cf.emplace(0));
+        assert_eq!(false, cf.emplace(0));
         /*
                0 1 2 3 4 5 6
             0  - - - - - - -
@@ -192,7 +192,7 @@ mod tests {
     fn test_emplace_col7_out_of_bounds() {
         let mut cf = ConnectFour2p::new(7, 6);
         assert_eq!(Player::Red, cf.turn);
-        assert!(/* returns false */ !cf.emplace(7));
+        assert_eq!(false, cf.emplace(7));
         assert_eq!(Player::Red, cf.turn);
     }
 
@@ -200,7 +200,7 @@ mod tests {
     fn test_emplace_coln1_out_of_bounds() {
         let mut cf = ConnectFour2p::new(7, 6);
         assert_eq!(Player::Red, cf.turn);
-        assert!(/* returns false */ !cf.emplace(-1));
+        assert_eq!(false, cf.emplace(-1));
         assert_eq!(Player::Red, cf.turn);
     }
 
@@ -237,7 +237,7 @@ mod tests {
             assert!(cf.emplace(0));
         }
         assert_eq!(Player::Red, cf.turn); // Is red's turn
-        assert!(/* returns false */ !cf.emplace(0)); // Red tries to place, but is invalid
+        assert_eq!(false, cf.emplace(0)); // Red tries to place, but is invalid
         assert_eq!(Player::Red, cf.turn); // Still red's turn
 
         /*
@@ -431,7 +431,7 @@ mod tests {
         );
         assert_eq!(Some(Player::Red), cf.get_winner());
 
-        assert!(/* returns false */ !cf.emplace(3)); // B (4,3) attempt after victory
+        assert_eq!(false, cf.emplace(3)); // B (4,3) attempt after victory
 
         assert_eq!(
             GameStatus::Won {
@@ -455,7 +455,7 @@ mod tests {
         assert_eq!(GameStatus::Closed, cf.state);
 
         let board = cf.board().clone();
-        assert!(/* returns false */ !cf.emplace(0)); // attempt after close
+        assert_eq!(false, cf.emplace(0)); // attempt after close
         assert_eq!(cf.board(), &board);
 
         assert_eq!(None, cf.get_winner());
