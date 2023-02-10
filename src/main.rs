@@ -1,7 +1,6 @@
 #![crate_name = "rusther"]
 
-use std::env;
-use std::fs;
+use std::{env, fs, path};
 
 use log::LevelFilter;
 use serenity::prelude::*;
@@ -29,28 +28,45 @@ async fn main() -> Result<(), String> {
     log::debug!("  With debug messages");
     log::trace!("  With trace messages");
 
-    let arbiter = Arbiter::new(Handle::current()).with_all_commands(); // TODO: This only uses one shard (?)
+    let arbiter = Arbiter::new(Handle::current()).with_all_commands();
     let token = get_token().unwrap();
 
     let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
     let mut client = Client::builder(token, intents)
         .event_handler(arbiter)
+        .cache_settings(move |cache| cache.max_messages(100))
         .await
         .expect("Could not create client!");
 
-    if let Err(reason) = client.start().await {
+    if let Err(reason) = client.start_autosharded().await {
         log::debug!("Client failed to start because {:?}", reason);
     }
 
     Ok(())
 }
 
-fn get_token() -> Result<String, &'static str> {
-    if let Ok(t) = env::var("DISCORD_SERVER_TOKEN") {
-        return Ok(t);
-    } else if let Ok(t) = fs::read_to_string("secret") {
-        return Ok(String::from(t.trim()));
+fn get_token() -> Result<String, String> {
+    const ENV_VAR: &'static str = "DISCORD_SERVER_TOKEN";
+    const SECRET_FILE: &'static str = "secret";
+
+    let secret_file = path::Path::new(SECRET_FILE);
+
+    if let Ok(token) = env::var(ENV_VAR) {
+        return Ok(token);
+    } else if let Ok(token) = fs::read_to_string(secret_file) {
+        return Ok(String::from(token.trim()));
     }
-    Err("Could not find server token in environment \
-         variable 'DISCORD_SERVER_TOKEN' or file 'secret'")
+    let current_directory = env::current_dir().unwrap();
+    let secret_file_path = format!(
+        "{}{}{}",
+        current_directory.display(),
+        path::MAIN_SEPARATOR,
+        SECRET_FILE
+    );
+    let error_message = format!(
+        "Could not find server token in environment \
+        variable '{}' or file '{}'",
+        ENV_VAR, secret_file_path
+    );
+    Err(error_message)
 }

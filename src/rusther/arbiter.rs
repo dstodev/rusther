@@ -60,7 +60,6 @@ impl Arbiter {
             ready_tx: Some(ready_tx),
         }
     }
-    // TODO: Make providing a name optional
     pub fn register_event_handler(
         &mut self,
         handler: impl EventSubHandler + 'static,
@@ -85,7 +84,6 @@ impl Arbiter {
 
         Ok(())
     }
-
     fn sanitize(content: String) -> String {
         let mut result = content;
 

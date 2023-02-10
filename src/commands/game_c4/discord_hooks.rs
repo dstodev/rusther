@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use serenity::{
     async_trait,
+    http::Http,
     model::{
         channel::{Message, Reaction},
         id::MessageId,
