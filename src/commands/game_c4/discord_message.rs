@@ -34,9 +34,6 @@ impl DiscordMessage {
             reactions: Vec::new(),
         }
     }
-}
-
-impl DiscordMessage {
     pub async fn render(&mut self, http: impl CacheHttp) {
         log_scope_time!("Render");
 
