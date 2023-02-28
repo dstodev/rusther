@@ -16,7 +16,7 @@ use crate::rusther::EventSubHandler;
 use super::{ConnectFour, ConnectFour1p, ConnectFour2p, DiscordMessage, GameStatus};
 
 pub struct ConnectFourDiscord {
-    games: Arc<RwLock<HashMap<MessageId, Arc<Mutex<DiscordMessage>>>>>,
+    games: Arc<RwLock<HashMap<MessageId, DiscordMessage>>>,
 }
 
 impl ConnectFourDiscord {
@@ -48,11 +48,9 @@ impl EventSubHandler for ConnectFourDiscord {
                         game_messages = Vec::from_iter(games_write.drain());
                     }
                     let http = context.http.clone();
-                    for (_id, game) in game_messages {
+                    for (_id, mut game) in game_messages {
                         let http = http.clone();
-
-                        let mut game_lock = game.lock().await;
-                        game_lock.finalize(http).await;
+                        game.finalize(http).await;
                     }
                 }
                 _ => {}
@@ -65,7 +63,6 @@ impl EventSubHandler for ConnectFourDiscord {
                     Ok(message) => {
                         let id = message.id;
                         let state = DiscordMessage::new(game, message, mode);
-                        let state = Arc::new(Mutex::new(state));
                         {
                             let mut games_write = games.write().await;
                             if games_write.insert(id, state).is_some() {
@@ -77,6 +74,9 @@ impl EventSubHandler for ConnectFourDiscord {
                             let games_read = games.read().await;
                             game_arc = games_read.get(&id).cloned().unwrap();
                         }
+                        // TODO: This isn't where the mutex should be
+                        // put the mutex in discord_message instead, around
+                        // what needs it
                         let mut game_lock = game_arc.lock().await;
                         game_lock.render(&context).await;
                         game_lock.add_reactions(&context).await;
